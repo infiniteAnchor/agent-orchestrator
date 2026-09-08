@@ -1078,6 +1078,19 @@ paths:
       summary: Check whether the desktop browser runtime is connected for a session
       tags:
       - browser
+  /api/v1/capabilities:
+    get:
+      operationId: getCapabilities
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+          description: OK
+      summary: Discover authenticated server capabilities for remote desktop clients
+      tags:
+      - identity
   /api/v1/desktop/sessions/{sessionId}/workspace:
     get:
       operationId: getDesktopSessionWorkspace
@@ -7250,6 +7263,16 @@ components:
       - ok
       - sessionId
       type: object
+    CapabilitiesResponse:
+      properties:
+        apiVersion:
+          type: integer
+        remoteDesktop:
+          $ref: '#/components/schemas/RemoteDesktopCapabilities'
+      required:
+      - apiVersion
+      - remoteDesktop
+      type: object
     ClaimPRRequest:
       properties:
         allowTakeover:
@@ -10196,6 +10219,24 @@ components:
           type: array
       required:
       - servers
+      type: object
+    RemoteDesktopCapabilities:
+      properties:
+        auth:
+          type: string
+        contractVersion:
+          type: integer
+        supported:
+          type: boolean
+        transports:
+          items:
+            type: string
+          type: array
+      required:
+      - supported
+      - contractVersion
+      - transports
+      - auth
       type: object
     RemoveProjectResult:
       properties:

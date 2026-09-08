@@ -408,17 +408,19 @@ var schemaNames = map[string]string{ //nolint:gosec // Public OpenAPI type names
 	"ControllersDevImportProjectsRequest":  "DevImportProjectsRequest",
 	"ControllersDevImportProjectsResponse": "DevImportProjectsResponse",
 	// httpd/controllers: mobile wire envelopes
-	"ControllersMobileStatusResponse":  "MobileStatusResponse",
-	"ControllersMobileEnableRequest":   "MobileEnableRequest",
-	"MobilebridgeEndpoint":             "MobileEndpoint",
-	"MobilebridgeTunnelStatus":         "MobileTunnelStatus",
-	"ControllersIdentityResponse":      "IdentityResponse",
-	"ControllersEndpointsResponse":     "EndpointsResponse",
-	"ControllersMobileDeviceResponse":  "MobileDeviceResponse",
-	"ControllersMobileDevicesResponse": "MobileDevicesResponse",
-	"ControllersMuteDeviceRequest":     "MuteDeviceRequest",
-	"ControllersInstallIDParam":        "InstallIDParam",
-	"ControllersPushPairingIDParam":    "PushPairingIDParam",
+	"ControllersMobileStatusResponse":      "MobileStatusResponse",
+	"ControllersMobileEnableRequest":       "MobileEnableRequest",
+	"MobilebridgeEndpoint":                 "MobileEndpoint",
+	"MobilebridgeTunnelStatus":             "MobileTunnelStatus",
+	"ControllersIdentityResponse":          "IdentityResponse",
+	"ControllersCapabilitiesResponse":      "CapabilitiesResponse",
+	"ControllersRemoteDesktopCapabilities": "RemoteDesktopCapabilities",
+	"ControllersEndpointsResponse":         "EndpointsResponse",
+	"ControllersMobileDeviceResponse":      "MobileDeviceResponse",
+	"ControllersMobileDevicesResponse":     "MobileDevicesResponse",
+	"ControllersMuteDeviceRequest":         "MuteDeviceRequest",
+	"ControllersInstallIDParam":            "InstallIDParam",
+	"ControllersPushPairingIDParam":        "PushPairingIDParam",
 	// devimport report
 	"DevimportReport":   "DevImportProjectsReport",
 	"DevimportConflict": "DevImportProjectsConflict",
@@ -551,6 +553,7 @@ func operations() []operation {
 	ops = append(ops, shellTerminalOperations()...)
 	ops = append(ops, systemOperations()...)
 	ops = append(ops, identityOperations()...)
+	ops = append(ops, capabilitiesOperations()...)
 	ops = append(ops, endpointsOperations()...)
 	return ops
 }
@@ -583,6 +586,21 @@ func identityOperations() []operation {
 			resps: []respUnit{
 				{http.StatusOK, controllers.IdentityResponse{}},
 				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+	}
+}
+
+// capabilitiesOperations declares authenticated server capability discovery for
+// remote desktop clients. Kept separate from identity so ADR 0003's
+// unauthenticated probe body stays {hostId, apiVersion} only.
+func capabilitiesOperations() []operation {
+	return []operation{
+		{
+			method: http.MethodGet, path: "/api/v1/capabilities", id: "getCapabilities", tag: "identity",
+			summary: "Discover authenticated server capabilities for remote desktop clients",
+			resps: []respUnit{
+				{http.StatusOK, controllers.CapabilitiesResponse{}},
 			},
 		},
 	}

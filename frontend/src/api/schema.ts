@@ -464,6 +464,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discover authenticated server capabilities for remote desktop clients */
+        get: operations["getCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/desktop/sessions/{sessionId}/workspace": {
         parameters: {
             query?: never;
@@ -2561,6 +2578,10 @@ export interface components {
             ok: boolean;
             sessionId: string;
         };
+        CapabilitiesResponse: {
+            apiVersion: number;
+            remoteDesktop: components["schemas"]["RemoteDesktopCapabilities"];
+        };
         ClaimPRRequest: {
             allowTakeover?: null | boolean;
             pr: string;
@@ -3634,6 +3655,12 @@ export interface components {
         };
         ReloadConversationMCPServersResponse: {
             servers: components["schemas"]["ConversationMCPServerPayload"][];
+        };
+        RemoteDesktopCapabilities: {
+            auth: string;
+            contractVersion: number;
+            supported: boolean;
+            transports: string[];
         };
         RemoveProjectResult: {
             projectId: string;
@@ -5738,6 +5765,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilitiesResponse"];
                 };
             };
         };

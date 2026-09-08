@@ -176,6 +176,9 @@ func TestLANManagerServesIdentityProbeWithoutAPassword(t *testing.T) {
 	if code := get("/api/v1/identity"); code != http.StatusOK {
 		t.Errorf("unauthenticated GET /api/v1/identity got %d, want 200", code)
 	}
+	if code := get("/api/v1/capabilities"); code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated GET /api/v1/capabilities got %d, want 401 (not an identity exemption)", code)
+	}
 	if code := get("/api/v1/sessions"); code != http.StatusUnauthorized {
 		t.Errorf("unauthenticated GET /api/v1/sessions got %d, want 401", code)
 	}

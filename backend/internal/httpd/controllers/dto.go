@@ -1616,6 +1616,25 @@ type IdentityResponse struct {
 	APIVersion int    `json:"apiVersion"`
 }
 
+// CapabilitiesResponse is the body of authenticated GET /api/v1/capabilities.
+// Remote desktop clients call this after identity pin verification and bearer
+// auth; it must not be folded into the unauthenticated identity probe.
+type CapabilitiesResponse struct {
+	// APIVersion mirrors the mobile contract version for shared negotiation.
+	APIVersion    int                       `json:"apiVersion"`
+	RemoteDesktop RemoteDesktopCapabilities `json:"remoteDesktop"`
+}
+
+// RemoteDesktopCapabilities describes the remote desktop control-plane surface
+// available on this daemon (LAN / Tailscale authenticated listener).
+type RemoteDesktopCapabilities struct {
+	Supported       bool     `json:"supported"`
+	ContractVersion int      `json:"contractVersion"`
+	Transports      []string `json:"transports"`
+	// Auth names the credential scheme: the shared LAN bearer password today.
+	Auth string `json:"auth"`
+}
+
 // MobileStatusResponse is the body of the Connect Mobile status/enable/disable/
 // regenerate endpoints. Password is populated only transiently, on enable and
 // regenerate responses (empty otherwise) — it is never persisted in plaintext.
