@@ -107,6 +107,7 @@ import { installCloudLocalAuthIPC } from "./main/cloud-auth-local";
 import { installCloudCpProxy } from "./main/cloud-cp-proxy";
 import { installRemoteDaemonProxy } from "./main/remote-daemon-proxy";
 import { installRemoteConnectionIPC } from "./main/remote-connection-ipc";
+import { installRemoteMuxBridge } from "./main/remote-mux-bridge";
 import { DEFAULT_POSTHOG_HOST, DEFAULT_POSTHOG_PROJECT_KEY } from "./shared/posthog-config";
 import { DEFAULT_SENTRY_DSN } from "./shared/sentry-config";
 import { buildTelemetryBootstrap, rendererTelemetryEnabled } from "./shared/telemetry";
@@ -2319,6 +2320,7 @@ installCloudCpProxy(cloudDataDir);
 // bearer is attached, and the bearer never reaches the renderer.
 installRemoteDaemonProxy(() => desktopDataDir);
 installRemoteConnectionIPC(() => desktopDataDir);
+installRemoteMuxBridge(() => desktopDataDir);
 
 function focusCloudWindow(): void {
 	const window = BaseWindow.getAllWindows()[0];

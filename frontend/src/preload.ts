@@ -50,6 +50,7 @@ import type {
 } from "./shared/remote-connection";
 import type { PublicRemoteConnectionStore } from "./main/remote-connection-store";
 import type { IdentityGateResult } from "./main/remote-identity-gate";
+import type { RemoteMuxClientEvent } from "./main/remote-mux-bridge";
 import type { UpdateOutcome } from "./shared/update-telemetry";
 import type { UiSettings } from "./main/ui-settings";
 import type { UpdateCheckOptions } from "./main/auto-updater";
@@ -660,6 +661,25 @@ const api = {
 			ipcRenderer.invoke("remoteConnection:verifyIdentity") as Promise<
 				IdentityGateResult | { ok: false; reason: "no_remote_profile"; message: string }
 			>,
+	},
+	remoteMux: {
+		connect: () =>
+			ipcRenderer.invoke("remoteMux:connect") as Promise<{ connectionId: string }>,
+		send: (connectionId: string, data: string) => {
+			ipcRenderer.send("remoteMux:send", connectionId, data);
+		},
+		close: (connectionId: string) => {
+			ipcRenderer.send("remoteMux:close", connectionId);
+		},
+		onEvent: (connectionId: string, listener: (event: RemoteMuxClientEvent) => void) => {
+			const channel = `remoteMux:event:${connectionId}`;
+			const wrapped = (_event: Electron.IpcRendererEvent, event: RemoteMuxClientEvent) =>
+				listener(event);
+			ipcRenderer.on(channel, wrapped);
+			return () => {
+				ipcRenderer.off(channel, wrapped);
+			};
+		},
 	},
 };
 
