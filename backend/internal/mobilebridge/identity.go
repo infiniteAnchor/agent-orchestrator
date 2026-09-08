@@ -57,7 +57,7 @@ type Identity struct {
 }
 
 // IdentityPath returns the identity file location under the data dir
-// (~/.ao/mobile/identity.json).
+// (default ~/.ao/data/mobile/identity.json when dataDir is cfg.DataDir).
 func IdentityPath(dataDir string) string {
 	return filepath.Join(dataDir, "mobile", "identity.json")
 }

@@ -32,10 +32,52 @@ func TestRootHelpDoesNotShowDaemon(t *testing.T) {
 	if strings.Contains(out, "\n  daemon") {
 		t.Fatalf("hidden daemon command leaked into help:\n%s", out)
 	}
-	for _, want := range []string{"start", "stop", "status", "doctor", "completion", "version"} {
+	for _, want := range []string{"start", "stop", "status", "doctor", "lan", "completion", "version"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("help missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestDaemonHeadlessFlag(t *testing.T) {
+	root := NewRootCommand(Deps{})
+	daemonCmd, _, err := root.Find([]string{"daemon"})
+	if err != nil {
+		t.Fatalf("Find daemon: %v", err)
+	}
+	if !daemonCmd.Hidden {
+		t.Fatal("daemon command must remain hidden")
+	}
+	flag := daemonCmd.Flags().Lookup("headless")
+	if flag == nil {
+		t.Fatal("daemon --headless flag is missing")
+	}
+	if flag.DefValue != "false" {
+		t.Fatalf("headless DefValue = %q, want false", flag.DefValue)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"omitted", nil, false},
+		{"set", []string{"--headless"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newDaemonCommand()
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("ParseFlags(%v): %v", tc.args, err)
+			}
+			got, err := cmd.Flags().GetBool("headless")
+			if err != nil {
+				t.Fatalf("GetBool: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("headless = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

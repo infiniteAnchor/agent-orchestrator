@@ -699,6 +699,7 @@ graph LR
 **Key environment variables:**
 
 - `AO_PORT` — HTTP bind port (default: 3001)
+- `AO_HEADLESS` — when `on`, skip the Electron supervisor watchdog (headless service mode; see `docs/headless-deploy.md`)
 - `AO_REQUEST_TIMEOUT` — Per-request timeout (default: 60s)
 - `AO_SHUTDOWN_TIMEOUT` — Graceful shutdown cap (default: 10s)
 - `AO_RUN_FILE` — PID/port handshake (default: ~/.ao/running.json)

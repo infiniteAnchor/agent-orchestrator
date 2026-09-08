@@ -10,13 +10,16 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	// Clear every recognised var so we observe pure defaults regardless of the
 	// surrounding environment.
-	for _, k := range []string{"AO_PORT", "AO_REQUEST_TIMEOUT", "AO_SHUTDOWN_TIMEOUT", "AO_RUN_FILE", "AO_DATA_DIR", "AO_AGENT", "AO_ALLOWED_ORIGINS", "AO_TELEMETRY_EVENTS", "AO_TELEMETRY_METRICS", "AO_TELEMETRY_REMOTE", "AO_TELEMETRY_POSTHOG_KEY", "AO_TELEMETRY_POSTHOG_HOST", "AO_TELEMETRY_DISABLED_EVENTS", "AO_TELEMETRY_APP_VERSION"} {
+	for _, k := range []string{"AO_PORT", "AO_REQUEST_TIMEOUT", "AO_SHUTDOWN_TIMEOUT", "AO_RUN_FILE", "AO_DATA_DIR", "AO_AGENT", "AO_ALLOWED_ORIGINS", "AO_TELEMETRY_EVENTS", "AO_TELEMETRY_METRICS", "AO_TELEMETRY_REMOTE", "AO_TELEMETRY_POSTHOG_KEY", "AO_TELEMETRY_POSTHOG_HOST", "AO_TELEMETRY_DISABLED_EVENTS", "AO_TELEMETRY_APP_VERSION", "AO_HEADLESS"} {
 		t.Setenv(k, "")
 	}
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Headless {
+		t.Error("Headless = true, want false when AO_HEADLESS is unset")
 	}
 	if cfg.Host != LoopbackHost {
 		t.Errorf("Host = %q, want %q", cfg.Host, LoopbackHost)
@@ -334,6 +337,43 @@ func TestLoadOfferingInvalid(t *testing.T) {
 			}
 			if _, err := Load(); err == nil {
 				t.Fatal("Load() = nil error, want error")
+			}
+		})
+	}
+}
+
+func TestLoadHeadless(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    bool
+		wantErr bool
+	}{
+		{"unset", "", false, false},
+		{"on", "on", true, false},
+		{"true", "true", true, false},
+		{"1", "1", true, false},
+		{"yes", "yes", true, false},
+		{"off", "off", false, false},
+		{"false", "false", false, false},
+		{"0", "0", false, false},
+		{"garbage", "maybe", false, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AO_HEADLESS", tc.raw)
+			cfg, err := Load()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("Load() = nil error, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Headless != tc.want {
+				t.Errorf("Headless = %v, want %v", cfg.Headless, tc.want)
 			}
 		})
 	}

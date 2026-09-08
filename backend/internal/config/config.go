@@ -176,6 +176,10 @@ type Config struct {
 	// (AO_CLOUD_CONTROL_PLANE_URL). When set it must be an http(s) URL; empty
 	// means no control plane is configured, which keeps the cloud offering off.
 	CloudControlPlaneURL string
+	// Headless reports whether the daemon should run without the Electron
+	// supervisor watchdog (AO_HEADLESS). Default off so local desktop mode is
+	// unchanged; when on, frontend-death auto-stop is disabled.
+	Headless bool
 }
 
 // Addr returns the host:port the HTTP server binds. It uses net.JoinHostPort so
@@ -210,6 +214,7 @@ func (c Config) Addr() string {
 //	AO_CLOUD_OFFERING          cloud offering flag off|on (default off)
 //	AO_LOCAL_OFFERING          local offering off|on (default on)
 //	AO_CLOUD_CONTROL_PLANE_URL cloud control plane base URL (trimmed, must be http(s))
+//	AO_HEADLESS                disable Electron supervisor watchdog off|on (default off)
 //
 // The bind host is not configurable: the daemon is loopback-only by design.
 func Load() (Config, error) {
@@ -360,6 +365,13 @@ func Load() (Config, error) {
 			return Config{}, err
 		}
 		cfg.LocalOffering = v
+	}
+	if raw := os.Getenv("AO_HEADLESS"); raw != "" {
+		v, err := parseToggleEnv("AO_HEADLESS", raw)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.Headless = v
 	}
 	// The control-plane URL is public client configuration (like the WorkOS
 	// client id), so it ships as a baked default and the env var is only a

@@ -159,6 +159,12 @@ func enqueueAgentSwitchWorkerShutdownTimeout(
 	return err
 }
 
+// shouldStartSupervisor reports whether the Electron frontend-death watchdog
+// should listen. Headless daemons stay up without a local supervisor client.
+func shouldStartSupervisor(headless bool) bool {
+	return !headless
+}
+
 // Run starts the daemon and blocks until it exits. SIGINT/SIGTERM drive
 // graceful shutdown through the HTTP server and background workers.
 func Run() error {
@@ -828,9 +834,12 @@ func Run() error {
 	// ponytail: 5s tolerates a brief frontend restart; tune if dev hot-reload trips it.
 	const supervisorGrace = 5 * time.Second
 
-	if ln, addr, err := supervisor.Listen(cfg.RunFilePath); err != nil {
-		// Non-fatal: without the link the daemon still works (e.g. headless "ao start"),
-		// it just will not auto-stop when a frontend dies. Do not block startup on it.
+	if !shouldStartSupervisor(cfg.Headless) {
+		log.Info("supervisor: frontend-death auto-stop disabled because the daemon is headless")
+	} else if ln, addr, err := supervisor.Listen(cfg.RunFilePath); err != nil {
+		// Non-fatal: without the link the daemon still works (e.g. bare `ao daemon`
+		// when the socket path is unavailable); it just will not auto-stop when a
+		// frontend dies. Do not block startup on it.
 		log.Warn("supervisor: listener unavailable; frontend-death auto-stop disabled", "err", err)
 	} else {
 		log.Info("supervisor: listening", "addr", addr)

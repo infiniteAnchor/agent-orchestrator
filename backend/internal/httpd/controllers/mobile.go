@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -15,9 +16,9 @@ const mobileUnencryptedWarning = "Traffic on this connection is not encrypted. O
 
 type mobileBridge interface {
 	Status() MobileStatusResponse
-	Enable() (MobileStatusResponse, error)
+	Enable(lanOnly bool) (MobileStatusResponse, error)
 	Disable() error
-	Regenerate() (MobileStatusResponse, error)
+	Regenerate(lanOnly bool) (MobileStatusResponse, error)
 	StartRemoteAccess() (MobileStatusResponse, error)
 	SetSecurePairing(on bool) (MobileStatusResponse, error)
 }
@@ -54,7 +55,12 @@ func (c *MobileController) StartRemoteAccess(w http.ResponseWriter, r *http.Requ
 
 // Enable turns the bridge on and returns the resulting status (with password).
 func (c *MobileController) Enable(w http.ResponseWriter, r *http.Request) {
-	res, err := c.Bridge.Enable()
+	req, err := decodeMobileEnableRequest(r)
+	if err != nil {
+		envelope.WriteAPIError(w, r, http.StatusBadRequest, "invalid_request", "MOBILE_ENABLE", "invalid body", nil)
+		return
+	}
+	res, err := c.Bridge.Enable(req.LanOnly)
 	if err != nil {
 		envelope.WriteAPIError(w, r, http.StatusInternalServerError, "internal", "MOBILE_ENABLE", err.Error(), nil)
 		return
@@ -73,12 +79,32 @@ func (c *MobileController) Disable(w http.ResponseWriter, r *http.Request) {
 
 // Regenerate rotates the connection password and returns the resulting status.
 func (c *MobileController) Regenerate(w http.ResponseWriter, r *http.Request) {
-	res, err := c.Bridge.Regenerate()
+	req, err := decodeMobileEnableRequest(r)
+	if err != nil {
+		envelope.WriteAPIError(w, r, http.StatusBadRequest, "invalid_request", "MOBILE_REGEN", "invalid body", nil)
+		return
+	}
+	res, err := c.Bridge.Regenerate(req.LanOnly)
 	if err != nil {
 		envelope.WriteAPIError(w, r, http.StatusInternalServerError, "internal", "MOBILE_REGEN", err.Error(), nil)
 		return
 	}
 	envelope.WriteJSON(w, http.StatusOK, withWarning(res))
+}
+
+// decodeMobileEnableRequest reads an optional JSON body. EOF / empty body means
+// desktop defaults (LanOnly=false).
+func decodeMobileEnableRequest(r *http.Request) (MobileEnableRequest, error) {
+	defer func() { _ = r.Body.Close() }()
+	var body MobileEnableRequest
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err == io.EOF {
+		return MobileEnableRequest{}, nil
+	}
+	if err != nil {
+		return MobileEnableRequest{}, err
+	}
+	return body, nil
 }
 
 // SecurePairing turns the TLS-over-Tailscale pairing mode on or off.
@@ -202,6 +228,7 @@ func (b *BridgeService) Status() MobileStatusResponse {
 		TailscaleHost: first(ts),
 		Port:          b.LAN.BoundPort(),
 		Warning:       mobileUnencryptedWarning,
+		LanOnly:       st.LanOnly,
 		Endpoints: mobilebridge.Endpoints(mobilebridge.EndpointInputs{
 			LANHosts:       lan,
 			TailscaleHosts: ts,
@@ -364,7 +391,7 @@ func (b *BridgeService) SetSecurePairing(on bool) (MobileStatusResponse, error) 
 	return b.Status(), nil
 }
 
-func (b *BridgeService) enableWithPassword(pw string) (MobileStatusResponse, error) {
+func (b *BridgeService) enableWithPassword(pw string, lanOnly bool) (MobileStatusResponse, error) {
 	// Snapshot state so we can roll back the in-memory side effects (armed hash,
 	// running listener) if we fail before durable state is written. Otherwise a
 	// failed enable would leave a LAN listener open on 0.0.0.0 with the new
@@ -382,7 +409,15 @@ func (b *BridgeService) enableWithPassword(pw string) (MobileStatusResponse, err
 	}
 	// Preserve the persisted SecurePairing flag — this Save is not the place a
 	// user's secure-pairing choice changes, only where enabled/password/port do.
-	if err := mobilebridge.Save(b.ConfigPath, mobilebridge.State{Enabled: true, Password: pw, LastPort: port, SecurePairing: prevSt.SecurePairing}); err != nil {
+	// LanOnly is set from the caller: desktop Connect Mobile leaves it false;
+	// `ao lan` sets it true so RestoreOnBoot does not start Cloudflare.
+	if err := mobilebridge.Save(b.ConfigPath, mobilebridge.State{
+		Enabled:       true,
+		Password:      pw,
+		LastPort:      port,
+		SecurePairing: prevSt.SecurePairing,
+		LanOnly:       lanOnly,
+	}); err != nil {
 		// Persist failed after the listener came up. Roll back so reality matches
 		// the unchanged persisted state (and the UI's "enable failed"). A rotate on
 		// an already-running listener (wasRunning) keeps serving on the prior hash;
@@ -413,7 +448,16 @@ func (b *BridgeService) enableWithPassword(pw string) (MobileStatusResponse, err
 	// advertisable, and Status reports that progress meanwhile.
 	// Resolve here rather than only at boot: this is the moment a connector
 	// installed since then should start being used.
-	if t := b.ensureTunnel(); t != nil {
+	//
+	// LanOnly (headless `ao lan`) must not start Cloudflare: Phase 1 control
+	// plane traffic stays on the LAN listener (optionally via Tailscale), not
+	// the Connect Mobile quick tunnel. If a prior enable left a tunnel up,
+	// stop it so status matches the persisted lanOnly flag.
+	if lanOnly {
+		if t := b.tunnel(); t != nil {
+			t.Stop()
+		}
+	} else if t := b.ensureTunnel(); t != nil {
 		t.Start(port)
 	}
 	return b.Status(), nil
@@ -440,23 +484,28 @@ func (b *BridgeService) RestoreOnBoot(state mobilebridge.State) error {
 		b.serveErr = b.applyServe(port)
 	}
 	// A restart does not go through enableWithPassword — there is no password to
-	// rotate — so the connector has to be started here too. Without it the
-	// bridge comes back LAN-only and the UI shows Connect Mobile enabled while
-	// remote access is silently gone until the user toggles it off and on.
-	if t := b.ensureTunnel(); t != nil {
-		t.Start(port)
+	// rotate — so the connector has to be started here too when remote access is
+	// wanted. Without it the bridge comes back LAN-only and the UI shows Connect
+	// Mobile enabled while remote access is silently gone until the user toggles
+	// it off and on. Honor LanOnly so headless `ao lan` enables stay off Cloudflare
+	// across daemon restarts.
+	if !state.LanOnly {
+		if t := b.ensureTunnel(); t != nil {
+			t.Start(port)
+		}
 	}
 	return nil
 }
 
 // Enable generates a fresh password, arms the auth hash, and starts the LAN
-// listener, persisting the enabled state.
-func (b *BridgeService) Enable() (MobileStatusResponse, error) {
+// listener, persisting the enabled state. When lanOnly is true, the Cloudflare
+// connector is not started (and any running one is stopped).
+func (b *BridgeService) Enable(lanOnly bool) (MobileStatusResponse, error) {
 	pw, err := mobilebridge.GeneratePassword()
 	if err != nil {
 		return MobileStatusResponse{}, err
 	}
-	return b.enableWithPassword(pw)
+	return b.enableWithPassword(pw, lanOnly)
 }
 
 // StartRemoteAccess looks for a connector again and starts it against the port
@@ -479,6 +528,13 @@ func (b *BridgeService) StartRemoteAccess() (MobileStatusResponse, error) {
 	if !st.Enabled || !b.LAN.Running() {
 		return b.Status(), nil
 	}
+	// Explicit remote-access opt-in clears LanOnly so reboot keeps the tunnel.
+	if st.LanOnly {
+		st.LanOnly = false
+		if err := mobilebridge.Save(b.ConfigPath, st); err != nil {
+			return MobileStatusResponse{}, err
+		}
+	}
 	if t := b.ensureTunnel(); t != nil {
 		t.Start(b.LAN.BoundPort())
 	}
@@ -487,12 +543,13 @@ func (b *BridgeService) StartRemoteAccess() (MobileStatusResponse, error) {
 
 // Regenerate rotates the connection password on the running listener, which
 // drops the currently paired phone (it authenticates against the new hash).
-func (b *BridgeService) Regenerate() (MobileStatusResponse, error) {
+// lanOnly has the same meaning as Enable.
+func (b *BridgeService) Regenerate(lanOnly bool) (MobileStatusResponse, error) {
 	pw, err := mobilebridge.GeneratePassword()
 	if err != nil {
 		return MobileStatusResponse{}, err
 	}
-	return b.enableWithPassword(pw) // rotate → drops current phone (new hash)
+	return b.enableWithPassword(pw, lanOnly) // rotate → drops current phone (new hash)
 }
 
 // Disable stops the LAN listener and persists the disabled state.

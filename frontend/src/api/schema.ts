@@ -3440,6 +3440,9 @@ export interface components {
         MobileDevicesResponse: {
             devices: components["schemas"]["MobileDeviceResponse"][];
         };
+        MobileEnableRequest: {
+            lanOnly: boolean;
+        };
         MobileEndpoint: {
             host: string;
             kind: string;
@@ -3451,6 +3454,7 @@ export interface components {
             endpoints: components["schemas"]["MobileEndpoint"][];
             host: string;
             hostId: string;
+            lanOnly: boolean;
             password: string;
             port: number;
             securePairing: components["schemas"]["ControllersSecurePairingStatus"];
@@ -6285,7 +6289,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MobileEnableRequest"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -6294,6 +6302,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MobileStatusResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
                 };
             };
             /** @description Forbidden */
@@ -6323,7 +6340,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MobileEnableRequest"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -6332,6 +6353,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MobileStatusResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
                 };
             };
             /** @description Forbidden */

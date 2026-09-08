@@ -1635,11 +1635,24 @@ type MobileStatusResponse struct {
 	// TailscaleHost is this machine's 100.64.0.0/10 Tailscale address, or "" when
 	// Tailscale is not up. The renderer encodes it into the pairing QR when the
 	// user selects the Tailscale tab, and shows a hint instead when it is empty.
-	TailscaleHost string              `json:"tailscaleHost"`
-	Port          int                 `json:"port"`
-	Password      string              `json:"password"`
-	Warning       string              `json:"warning"`
+	TailscaleHost string `json:"tailscaleHost"`
+	Port          int    `json:"port"`
+	Password      string `json:"password"`
+	Warning       string `json:"warning"`
+	// LanOnly is true when the bridge was enabled without starting the
+	// Cloudflare remote-access connector (`ao lan`). False for desktop Connect
+	// Mobile enables.
+	LanOnly       bool                `json:"lanOnly"`
 	SecurePairing SecurePairingStatus `json:"securePairing"`
+}
+
+// MobileEnableRequest is the optional body for POST /api/v1/mobile/enable and
+// /api/v1/mobile/regenerate. An empty body keeps desktop Connect Mobile
+// behavior (start the Cloudflare connector when available).
+type MobileEnableRequest struct {
+	// LanOnly enables the 0.0.0.0 listener without starting the Cloudflare
+	// remote-access connector. Used by `ao lan`; desktop Connect Mobile omits it.
+	LanOnly bool `json:"lanOnly"`
 }
 
 // SecurePairingStatus describes the optional TLS-over-Tailscale pairing mode,

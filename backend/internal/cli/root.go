@@ -202,6 +202,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.AddCommand(newStopCommand(ctx))
 	root.AddCommand(newStatusCommand(ctx))
 	root.AddCommand(newDoctorCommand(ctx))
+	root.AddCommand(newLanCommand(ctx))
 	root.AddCommand(newAgentCommand(ctx))
 	root.AddCommand(newSpawnCommand(ctx))
 	root.AddCommand(newSendCommand(ctx))
@@ -333,13 +334,22 @@ func atMostOneArg(cmd *cobra.Command, args []string) error {
 }
 
 func newDaemonCommand() *cobra.Command {
-	return &cobra.Command{
+	var headless bool
+	cmd := &cobra.Command{
 		Use:    "daemon",
 		Short:  "Run the AO backend daemon",
 		Hidden: true,
 		Args:   noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Flag sets env before Load(); omit the flag so systemd can set AO_HEADLESS alone.
+			if headless {
+				if err := os.Setenv("AO_HEADLESS", "on"); err != nil {
+					return err
+				}
+			}
 			return daemon.Run()
 		},
 	}
+	cmd.Flags().BoolVar(&headless, "headless", false, "Disable Electron supervisor watchdog (sets AO_HEADLESS=on)")
+	return cmd
 }

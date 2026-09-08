@@ -1,12 +1,15 @@
 # AO CLI
 
 The `ao` CLI is a thin Go/Cobra client for the local Agent Orchestrator daemon.
-It starts, discovers, inspects, and stops the daemon through the loopback HTTP
-surface and the `running.json` handshake. It must not open SQLite directly or
-call runtime, workspace, tracker, or agent adapters in-process.
+It discovers, inspects, and stops the daemon through the loopback HTTP surface
+and the `running.json` handshake. It must not open SQLite directly or call
+runtime, workspace, tracker, or agent adapters in-process.
 
-When using the CLI directly from a shell, make sure the daemon is running first
-with `ao start` or by opening the desktop app. Product commands such as
+When using the CLI directly from a shell, make sure the daemon is already
+running. On a normal desktop install, open the desktop app (or run `ao start`,
+which fetches/opens that app and does **not** spawn the daemon). On a headless
+host, start `ao daemon --headless` or your systemd unit first — see
+[headless-deploy.md](../headless-deploy.md). Product commands such as
 `ao agent ls` and `ao spawn` call the loopback daemon and will fail with a
 "daemon is not running" error if no `running.json` points at a live process. From
 a source checkout, build and run the local binary explicitly, for example:
@@ -26,13 +29,23 @@ Every product command resolves to a daemon HTTP route. Run `ao <command>
 
 | Command                       | Purpose                                                                                                                           |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `ao start`                    | Start the daemon in the background and wait for `/readyz`.                                                                        |
+| `ao start`                    | Fetch (if needed) and open the Agent Orchestrator desktop app. Does not spawn the daemon.                                         |
 | `ao stop`                     | Gracefully stop the daemon via loopback `POST /shutdown` after verifying daemon identity.                                         |
 | `ao status` / `--json`        | Report daemon state from `running.json`, process liveness, `/healthz`, and `/readyz`.                                             |
 | `ao doctor` / `--json`        | Check config, data directory, DB-file presence, daemon state, `git`, and (on Darwin/Linux) `tmux`; on Windows conpty is built in. |
 | `ao completion <shell>`       | Generate completions for `bash`, `zsh`, `fish`, or `powershell`.                                                                  |
 | `ao version` / `ao --version` | Print build metadata.                                                                                                             |
-| `ao daemon`                   | Hidden internal daemon entrypoint used by `ao start`.                                                                             |
+| `ao daemon`                   | Hidden daemon entrypoint. Runs the backend in-process until SIGINT/SIGTERM or loopback `POST /shutdown`.                          |
+| `ao daemon --headless`        | Same entrypoint with Electron supervisor watchdog disabled (`AO_HEADLESS=on`). For systemd / always-on hosts.                     |
+| `ao lan status` / `--json`    | `GET /api/v1/mobile/status` — LAN listener state, host id, bound host/port.                                                       |
+| `ao lan enable` / `--json`    | `POST /api/v1/mobile/enable` — enable LAN listener; prints host id and password as distinct fields (pin host id before sharing).  |
+| `ao lan disable` / `--json`   | `POST /api/v1/mobile/disable` — disable the LAN listener.                                                                         |
+| `ao lan regenerate` / `--json`| `POST /api/v1/mobile/regenerate` — rotate the LAN password; pin host id before sending the new secret.                            |
+
+`ao lan` is loopback-only. Enable/regenerate post `lanOnly=true` so the daemon
+does not start the Cloudflare remote-access connector (persisted across
+restarts). It does not configure Tailscale Serve. Headless packaging and
+systemd notes: [headless-deploy.md](../headless-deploy.md).
 
 ### Product commands
 
@@ -188,7 +201,8 @@ The CLI and daemon share the same environment-driven config:
 | --------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
 | `AO_PORT`             | `3001`               | Loopback daemon port.                                                                          |
 | `AO_RUN_FILE`         | `~/.ao/running.json` | PID/port handshake.                                                                            |
-| `AO_DATA_DIR`         | `~/.ao/data`         | SQLite data directory.                                                                         |
+| `AO_DATA_DIR`         | `~/.ao/data`         | SQLite data directory (also roots `mobile/` config + identity).                                |
+| `AO_HEADLESS`         | unset (off)          | `on` disables the Electron supervisor watchdog; use for systemd / `ao daemon --headless`.      |
 | `AO_REQUEST_TIMEOUT`  | `60s`                | REST request timeout.                                                                          |
 | `AO_SHUTDOWN_TIMEOUT` | `10s`                | Graceful shutdown cap.                                                                         |
 | `AO_KEEP_DAEMON`      | unset (off)          | Keep the desktop app's daemon running after the window closes; stop only via `ao stop`. (fork) |

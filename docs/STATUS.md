@@ -110,6 +110,12 @@ surface (`npm run sqlc`, `npm run api`).
   accounts; external Codex clients are not controlled.
 - OpenAPI spec generated from Go DTOs; frontend TS types generated from it and
   drift-checked in CI.
+- Headless Phase 1 packaging: `ao daemon --headless` / `AO_HEADLESS` skips the
+  Electron supervisor watchdog; `ao lan` enables/rotates the LAN listener over
+  loopback with distinct host-id and password output and `lanOnly=true` so
+  Cloudflare remote access is not started; operator runbook and systemd unit in
+  [`docs/headless-deploy.md`](headless-deploy.md). Remote desktop enrollment
+  (Phase 2) is not shipped.
 
 ### Frontend (Electron + React)
 

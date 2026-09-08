@@ -22,14 +22,14 @@ func (f *fakeBridge) StartRemoteAccess() (MobileStatusResponse, error) {
 	return MobileStatusResponse{}, nil
 }
 
-func (f *fakeBridge) Enable() (MobileStatusResponse, error) {
+func (f *fakeBridge) Enable(_ bool) (MobileStatusResponse, error) {
 	f.enabled = true
 	r := f.Status()
 	r.Password = "abcd1234"
 	return r, nil
 }
 func (f *fakeBridge) Disable() error { f.enabled = false; return nil }
-func (f *fakeBridge) Regenerate() (MobileStatusResponse, error) {
+func (f *fakeBridge) Regenerate(_ bool) (MobileStatusResponse, error) {
 	r := f.Status()
 	r.Password = "wxyz5678"
 	return r, nil
@@ -77,7 +77,7 @@ func TestMobileEnableRollsBackListenerWhenSaveFails(t *testing.T) {
 	lan := &fakeLAN{}
 	b := &BridgeService{LAN: lan, ConfigPath: filepath.Join(blocker, "mobile", "config.json"), DefaultPort: 3011}
 
-	if _, err := b.Enable(); err == nil {
+	if _, err := b.Enable(false); err == nil {
 		t.Fatal("expected enable to fail on Save error")
 	}
 	if lan.Running() {
@@ -116,7 +116,7 @@ func TestMobileStatusSurfacesBothHosts(t *testing.T) {
 		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
 		PickTailscaleHosts: func() []string { return []string{"100.72.46.7"} },
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestMobileStatusTailscaleHostEmptyWhenAbsent(t *testing.T) {
 		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
 		PickTailscaleHosts: func() []string { return nil },
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if got := b.Status().TailscaleHost; got != "" {
@@ -185,7 +185,7 @@ func TestSecurePairingAppliesActualBoundPort(t *testing.T) {
 	if _, err := b.SetSecurePairing(true); err != nil {
 		t.Fatalf("SetSecurePairing: %v", err)
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("Enable: %v", err)
 	}
 	if len(applied) == 0 || applied[len(applied)-1] != 54014 {
@@ -198,7 +198,7 @@ func TestSecurePairingStatusActive(t *testing.T) {
 	if _, err := b.SetSecurePairing(true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatal(err)
 	}
 	sp := b.Status().SecurePairing
@@ -230,7 +230,7 @@ func TestSecurePairingReasons(t *testing.T) {
 			if _, err := b.SetSecurePairing(true); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := b.Enable(); err != nil {
+			if _, err := b.Enable(false); err != nil {
 				t.Fatal(err)
 			}
 			if got := b.Status().SecurePairing.Reason; got != tc.want {
@@ -248,7 +248,7 @@ func TestSecurePairingServeFailureKeepsBridgeUp(t *testing.T) {
 	if _, err := b.SetSecurePairing(true); err != nil {
 		t.Fatal(err)
 	}
-	res, err := b.Enable()
+	res, err := b.Enable(false)
 	if err != nil {
 		t.Fatalf("Enable must succeed despite serve failure: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestDisableLeavesServeAloneWhenSecurePairingNeverEnabled(t *testing.T) {
 	cleared := 0
 	b := newSecureBridge(t, tsUp, func() int { return 3011 })
 	b.ClearServe = func() error { cleared++; return nil }
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if err := b.Disable(); err != nil {
@@ -358,7 +358,7 @@ func TestDisableClearsServeWhenSecurePairingEnabled(t *testing.T) {
 	cleared := 0
 	b := newSecureBridge(t, tsUp, func() int { return 3011 })
 	b.ClearServe = func() error { cleared++; return nil }
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if _, err := b.SetSecurePairing(true); err != nil {
@@ -380,7 +380,7 @@ func TestShutdownServeClearsProxyWhenSecurePairingEnabled(t *testing.T) {
 	cleared := 0
 	b := newSecureBridge(t, tsUp, func() int { return 3011 })
 	b.ClearServe = func() error { cleared++; return nil }
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if _, err := b.SetSecurePairing(true); err != nil {
@@ -396,7 +396,7 @@ func TestShutdownServeClearsProxyWhenSecurePairingEnabled(t *testing.T) {
 // against the next bound port without the user re-toggling anything.
 func TestShutdownServeKeepsSecurePairingPreference(t *testing.T) {
 	b := newSecureBridge(t, tsUp, func() int { return 3011 })
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if _, err := b.SetSecurePairing(true); err != nil {
@@ -417,7 +417,7 @@ func TestShutdownServeKeepsSecurePairingPreference(t *testing.T) {
 func TestShutdownServeNoopWhenNotOwned(t *testing.T) {
 	for name, setup := range map[string]func(*BridgeService){
 		"bridge disabled":         func(b *BridgeService) {},
-		"secure pairing never on": func(b *BridgeService) { _, _ = b.Enable() },
+		"secure pairing never on": func(b *BridgeService) { _, _ = b.Enable(false) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			cleared := 0
@@ -444,7 +444,7 @@ func TestMobileStatusAdvertisesEveryEndpoint(t *testing.T) {
 		PickLANHosts:       func() []string { return []string{"192.168.1.42", "10.0.0.5"} },
 		PickTailscaleHosts: func() []string { return []string{"100.72.46.7"} },
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 
@@ -483,7 +483,7 @@ func TestMobileStatusEndpointsEmptyWithoutNetwork(t *testing.T) {
 		PickLANHosts:       func() []string { return nil },
 		PickTailscaleHosts: func() []string { return nil },
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	got := b.Status()
@@ -523,11 +523,80 @@ func TestMobileEnableStartsTheTunnelOnTheBoundPort(t *testing.T) {
 		PickTailscaleHosts: func() []string { return nil },
 		Tunnel:             tun,
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if tun.startedOn != 3011 {
 		t.Fatalf("tunnel started on %d, want the bound port 3011", tun.startedOn)
+	}
+}
+
+func TestMobileEnableLanOnlySkipsAndStopsTunnel(t *testing.T) {
+	tun := &fakeTunnel{startedOn: 999}
+	path := filepath.Join(t.TempDir(), "mobile", "config.json")
+	b := &BridgeService{
+		LAN:                &fakeLAN{},
+		ConfigPath:         path,
+		DefaultPort:        3011,
+		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
+		PickTailscaleHosts: func() []string { return nil },
+		Tunnel:             tun,
+	}
+	res, err := b.Enable(true)
+	if err != nil {
+		t.Fatalf("enable lan-only: %v", err)
+	}
+	if !res.LanOnly {
+		t.Fatal("LanOnly = false, want true")
+	}
+	if tun.startedOn != 999 {
+		t.Fatalf("lan-only enable started tunnel on %d", tun.startedOn)
+	}
+	if tun.stops != 1 {
+		t.Fatalf("lan-only enable stopped tunnel %d times, want 1", tun.stops)
+	}
+	st, err := mobilebridge.Load(path)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if !st.LanOnly || !st.Enabled {
+		t.Fatalf("persisted state = %+v, want enabled lanOnly", st)
+	}
+
+	// Switching to a desktop-style enable should start the tunnel and clear lanOnly.
+	res, err = b.Enable(false)
+	if err != nil {
+		t.Fatalf("enable with remote access: %v", err)
+	}
+	if res.LanOnly {
+		t.Fatal("LanOnly still true after desktop enable")
+	}
+	if tun.startedOn != 3011 {
+		t.Fatalf("desktop enable started tunnel on %d, want 3011", tun.startedOn)
+	}
+}
+
+func TestRestoreOnBootHonorsLanOnly(t *testing.T) {
+	tun := &fakeTunnel{}
+	path := filepath.Join(t.TempDir(), "mobile", "config.json")
+	b := &BridgeService{
+		LAN:                &fakeLAN{},
+		ConfigPath:         path,
+		DefaultPort:        3011,
+		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
+		PickTailscaleHosts: func() []string { return nil },
+		Tunnel:             tun,
+	}
+	if err := b.RestoreOnBoot(mobilebridge.State{
+		Enabled:  true,
+		Password: "pw",
+		LastPort: 3011,
+		LanOnly:  true,
+	}); err != nil {
+		t.Fatalf("RestoreOnBoot: %v", err)
+	}
+	if tun.startedOn != 0 {
+		t.Fatalf("RestoreOnBoot started tunnel on %d despite lanOnly", tun.startedOn)
 	}
 }
 
@@ -543,7 +612,7 @@ func TestMobileDisableStopsTheTunnel(t *testing.T) {
 		PickTailscaleHosts: func() []string { return nil },
 		Tunnel:             tun,
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if err := b.Disable(); err != nil {
@@ -567,7 +636,7 @@ func TestMobileStatusIncludesAReadyTunnelEndpoint(t *testing.T) {
 		PickTailscaleHosts: func() []string { return nil },
 		Tunnel:             tun,
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 
@@ -593,7 +662,7 @@ func TestMobileStatusOmitsATunnelThatIsNotReady(t *testing.T) {
 		PickTailscaleHosts: func() []string { return nil },
 		Tunnel:             tun,
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 
@@ -614,7 +683,7 @@ func TestMobileWorksWithNoTunnelConfigured(t *testing.T) {
 		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
 		PickTailscaleHosts: func() []string { return nil },
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if got := b.Status(); len(got.Endpoints) != 1 || got.Endpoints[0].Kind != mobilebridge.KindLAN {
@@ -638,7 +707,7 @@ func TestMobileStatusCarriesTheHostIdentity(t *testing.T) {
 		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
 		PickTailscaleHosts: func() []string { return nil },
 	}
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 
@@ -776,7 +845,7 @@ func TestEnableResolvesAConnectorInstalledSinceBoot(t *testing.T) {
 		},
 	}
 
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 
@@ -799,7 +868,7 @@ func TestEnableWithoutAConnectorStillWorks(t *testing.T) {
 		ResolveTunnel: func() TunnelController { return nil },
 	}
 
-	if _, err := b.Enable(); err != nil {
+	if _, err := b.Enable(false); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if b.tunnelStatus().Supported {
@@ -811,6 +880,41 @@ func TestEnableWithoutAConnectorStillWorks(t *testing.T) {
 // for the new binary. Enable always mints a fresh password, so that silently
 // invalidated the phone already paired — the user installed remote access and
 // lost the connection they were setting it up for.
+func TestStartRemoteAccessClearsLanOnly(t *testing.T) {
+	tun := &fakeTunnel{}
+	path := filepath.Join(t.TempDir(), "mobile", "config.json")
+	b := &BridgeService{
+		LAN:                &fakeLAN{},
+		ConfigPath:         path,
+		DefaultPort:        3011,
+		PickLANHosts:       func() []string { return []string{"192.168.1.42"} },
+		PickTailscaleHosts: func() []string { return nil },
+		Tunnel:             tun,
+	}
+	if _, err := b.Enable(true); err != nil {
+		t.Fatalf("enable lan-only: %v", err)
+	}
+	tun.startedOn = 0
+	tun.stops = 0
+	after, err := b.StartRemoteAccess()
+	if err != nil {
+		t.Fatalf("StartRemoteAccess: %v", err)
+	}
+	if after.LanOnly {
+		t.Fatal("LanOnly still true after StartRemoteAccess")
+	}
+	if tun.startedOn != 3011 {
+		t.Fatalf("tunnel started on %d, want 3011", tun.startedOn)
+	}
+	st, err := mobilebridge.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if st.LanOnly {
+		t.Fatal("persisted LanOnly still true")
+	}
+}
+
 func TestStartRemoteAccessKeepsThePairedPhoneWorking(t *testing.T) {
 	dir := t.TempDir()
 	lan := &fakeLAN{}
@@ -818,7 +922,7 @@ func TestStartRemoteAccessKeepsThePairedPhoneWorking(t *testing.T) {
 	b := &BridgeService{
 		ConfigPath: filepath.Join(dir, "mobile.json"), LAN: lan, DefaultPort: 3011,
 	}
-	before, err := b.Enable()
+	before, err := b.Enable(false)
 	if err != nil {
 		t.Fatalf("enable: %v", err)
 	}

@@ -20,13 +20,13 @@ func (fakeMobileBridge) Status() controllers.MobileStatusResponse {
 	return controllers.MobileStatusResponse{}
 }
 
-func (fakeMobileBridge) Enable() (controllers.MobileStatusResponse, error) {
+func (fakeMobileBridge) Enable(_ bool) (controllers.MobileStatusResponse, error) {
 	return controllers.MobileStatusResponse{}, nil
 }
 
 func (fakeMobileBridge) Disable() error { return nil }
 
-func (fakeMobileBridge) Regenerate() (controllers.MobileStatusResponse, error) {
+func (fakeMobileBridge) Regenerate(_ bool) (controllers.MobileStatusResponse, error) {
 	return controllers.MobileStatusResponse{}, nil
 }
 
