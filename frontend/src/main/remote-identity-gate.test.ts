@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { REMOTE_IDENTITY_BODY_LIMIT } from "./remote-body-limit";
 import { verifyPinnedIdentity } from "./remote-identity-gate";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -84,5 +85,28 @@ describe("verifyPinnedIdentity", () => {
 			fetchImpl: fetchImpl as unknown as typeof fetch,
 		});
 		expect(result).toMatchObject({ ok: false, reason: "bad_status", status: 503 });
+	});
+
+	it("rejects oversized identity bodies before parsing JSON", async () => {
+		const oversized = "x".repeat(REMOTE_IDENTITY_BODY_LIMIT + 1);
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(oversized, {
+					status: 200,
+					headers: {
+						"content-type": "application/json",
+						"content-length": String(oversized.length),
+					},
+				}),
+		);
+		const result = await verifyPinnedIdentity({
+			baseUrl: "http://attacker.example:3011",
+			pinnedHostId: "h_abc",
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+		});
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe("invalid_body");
+		expect(result.message).toMatch(/byte limit/i);
 	});
 });

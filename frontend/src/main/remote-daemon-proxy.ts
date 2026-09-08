@@ -8,6 +8,12 @@
 import { ipcMain } from "electron";
 import { randomUUID } from "node:crypto";
 import {
+	REMOTE_DAEMON_ERROR_BODY_LIMIT,
+	REMOTE_DAEMON_RESPONSE_BODY_LIMIT,
+	RemoteBodyLimitError,
+	readResponseBodyLimited,
+} from "./remote-body-limit";
+import {
 	getActiveRemoteProfile,
 	type RemoteServerProfile,
 } from "./remote-connection-store";
@@ -26,8 +32,7 @@ export function remoteDaemonStreamChannel(streamId: string): string {
 
 export const MAX_STREAMS_PER_WEBCONTENTS = 8;
 
-/** Cap buffered HTTP bodies before they cross IPC into the renderer. */
-export const REMOTE_DAEMON_RESPONSE_BODY_LIMIT = 16 << 20; // 16 MiB
+export { REMOTE_DAEMON_RESPONSE_BODY_LIMIT };
 
 export const REMOTE_DAEMON_STREAM_ERROR_MARKER = "REMOTE_DAEMON_STREAM_ERROR";
 
@@ -216,47 +221,14 @@ function identityFailureResponse(gate: Extract<IdentityGateResult, { ok: false }
 async function envelopeMessage(response: Response): Promise<string> {
 	const fallback = `Remote daemon stream request failed with status ${response.status}.`;
 	try {
-		const body = (await response.json()) as { message?: unknown; error?: unknown } | null;
+		const text = await readResponseBodyLimited(response, REMOTE_DAEMON_ERROR_BODY_LIMIT);
+		const body = JSON.parse(text) as { message?: unknown; error?: unknown } | null;
 		if (typeof body?.message === "string" && body.message !== "") return body.message;
 		if (typeof body?.error === "string" && body.error !== "") return body.error;
 	} catch {
-		// Non-JSON body: keep the status-derived message.
+		// Non-JSON / oversized body: keep the status-derived message.
 	}
 	return fallback;
-}
-
-async function readBodyLimited(response: Response, limit: number): Promise<string> {
-	const contentLength = response.headers.get("content-length");
-	if (contentLength !== null) {
-		const declared = Number(contentLength);
-		if (Number.isFinite(declared) && declared > limit) {
-			throw invalid(`response body exceeds the ${limit}-byte IPC limit.`);
-		}
-	}
-	if (response.body === null) {
-		return "";
-	}
-	const reader = response.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (value === undefined || value.byteLength === 0) continue;
-			total += value.byteLength;
-			if (total > limit) {
-				await reader.cancel().catch(() => undefined);
-				throw invalid(`response body exceeds the ${limit}-byte IPC limit.`);
-			}
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
-	if (chunks.length === 0) return "";
-	if (chunks.length === 1) return Buffer.from(chunks[0]!).toString("utf8");
-	return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
 }
 
 interface ActiveStream {
@@ -264,6 +236,11 @@ interface ActiveStream {
 	sender: RemoteDaemonStreamSender;
 	channel: string;
 	closed: boolean;
+}
+
+interface PendingStreamOpen {
+	controller: AbortController;
+	cancelled: boolean;
 }
 
 export function createRemoteDaemonProxy(
@@ -276,13 +253,23 @@ export function createRemoteDaemonProxy(
 	const verifyIdentity = options.verifyIdentity ?? verifyPinnedIdentity;
 
 	const streams = new Map<string, ActiveStream>();
+	const pendingOpens = new Map<string, PendingStreamOpen>();
 	const streamIdsBySender = new Map<number, Set<string>>();
 
 	function teardown(streamId: string, stream: ActiveStream): void {
 		stream.closed = true;
 		streams.delete(streamId);
+		pendingOpens.delete(streamId);
 		streamIdsBySender.get(stream.sender.id)?.delete(streamId);
 		stream.controller.abort();
+	}
+
+	function cancelPendingOpen(streamId: string): void {
+		const pending = pendingOpens.get(streamId);
+		if (pending === undefined) return;
+		pending.cancelled = true;
+		pending.controller.abort();
+		pendingOpens.delete(streamId);
 	}
 
 	function emit(stream: ActiveStream, event: RemoteDaemonStreamEvent): void {
@@ -299,8 +286,10 @@ export function createRemoteDaemonProxy(
 				const orphaned = streamIdsBySender.get(sender.id);
 				streamIdsBySender.delete(sender.id);
 				for (const streamId of orphaned ?? []) {
+					cancelPendingOpen(streamId);
 					const stream = streams.get(streamId);
 					if (stream !== undefined) teardown(streamId, stream);
+					else ids?.delete(streamId);
 				}
 			});
 		}
@@ -375,11 +364,18 @@ export function createRemoteDaemonProxy(
 		response.headers.forEach((value, key) => {
 			headers[key] = value;
 		});
-		return {
-			status: response.status,
-			headers,
-			body: await readBodyLimited(response, REMOTE_DAEMON_RESPONSE_BODY_LIMIT),
-		};
+		try {
+			return {
+				status: response.status,
+				headers,
+				body: await readResponseBodyLimited(response, REMOTE_DAEMON_RESPONSE_BODY_LIMIT),
+			};
+		} catch (err) {
+			if (err instanceof RemoteBodyLimitError) {
+				throw invalid(`response body exceeds the ${REMOTE_DAEMON_RESPONSE_BODY_LIMIT}-byte IPC limit.`);
+			}
+			throw err;
+		}
 	}
 
 	async function openStream(
@@ -398,12 +394,19 @@ export function createRemoteDaemonProxy(
 		// all pass the cap while identity/fetch are in flight.
 		const streamId = randomUUID();
 		ids.add(streamId);
+		const controller = new AbortController();
+		const pending: PendingStreamOpen = { controller, cancelled: false };
+		pendingOpens.set(streamId, pending);
 		const releaseReservation = (): void => {
+			cancelPendingOpen(streamId);
 			ids.delete(streamId);
 		};
 
 		try {
 			const auth = await authorize();
+			if (pending.cancelled || sender.isDestroyed()) {
+				throw streamError(499, "Remote daemon stream open cancelled.");
+			}
 			if (!auth.ok) {
 				let detail = "Remote daemon authorization failed.";
 				try {
@@ -415,7 +418,6 @@ export function createRemoteDaemonProxy(
 				throw streamError(auth.response.status, detail);
 			}
 			const url = resolveTargetUrl(auth.profile.baseUrl, valid.path);
-			const controller = new AbortController();
 			const response = await doFetch(url, {
 				method: valid.method.toUpperCase(),
 				headers: buildHeaders(valid.headers, auth.profile.password),
@@ -423,6 +425,9 @@ export function createRemoteDaemonProxy(
 				signal: controller.signal,
 				redirect: "manual",
 			});
+			if (pending.cancelled || sender.isDestroyed()) {
+				throw streamError(499, "Remote daemon stream open cancelled.");
+			}
 			if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
 				throw streamError(502, "Remote daemon stream redirected; the request was not followed.");
 			}
@@ -433,6 +438,7 @@ export function createRemoteDaemonProxy(
 				throw streamError(response.status, "The event stream response has no body.");
 			}
 
+			pendingOpens.delete(streamId);
 			const stream: ActiveStream = {
 				controller,
 				sender,

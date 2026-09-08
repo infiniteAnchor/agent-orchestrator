@@ -53,17 +53,28 @@ class FakeSocket extends EventEmitter {
 	}
 }
 
-function mockSender(id = 1): RemoteMuxSender & { events: Array<{ channel: string; event: unknown }> } {
+function mockSender(id = 1): RemoteMuxSender & {
+	events: Array<{ channel: string; event: unknown }>;
+	destroy: () => void;
+} {
 	const events: Array<{ channel: string; event: unknown }> = [];
+	let destroyed = false;
+	const destroyListeners: Array<() => void> = [];
 	return {
 		id,
 		events,
-		isDestroyed: () => false,
+		isDestroyed: () => destroyed,
 		send(channel, event) {
 			events.push({ channel, event });
 		},
-		once() {
+		once(event, listener) {
+			if (event === "destroyed") destroyListeners.push(listener);
 			return undefined;
+		},
+		destroy() {
+			if (destroyed) return;
+			destroyed = true;
+			for (const listener of destroyListeners.splice(0)) listener();
 		},
 	};
 }
@@ -99,9 +110,10 @@ describe("createRemoteMuxBridge", () => {
 		expect(constructed?.url).toBe("ws://100.64.0.1:3011/mux");
 		expect(constructed?.headers.Authorization).toBe("Bearer secret12");
 
-		await vi.waitFor(() => {
-			expect(sender.events.some((e) => (e.event as { type: string }).type === "open")).toBe(true);
-		});
+		await vi.waitFor(() => constructed?.readyState === FakeSocket.OPEN);
+		expect(sender.events.some((e) => (e.event as { type: string }).type === "open")).toBe(false);
+		bridge.subscribe(sender, connectionId);
+		expect(sender.events.some((e) => (e.event as { type: string }).type === "open")).toBe(true);
 
 		bridge.send(sender, connectionId, JSON.stringify({ ch: "system", type: "ping" }));
 		expect(constructed?.sent).toEqual([JSON.stringify({ ch: "system", type: "ping" })]);
@@ -114,6 +126,50 @@ describe("createRemoteMuxBridge", () => {
 					(e.event as { data?: string }).data === '{"ch":"system","type":"pong"}',
 			),
 		).toBe(true);
+	});
+
+	it("defers open until the renderer subscribes", async () => {
+		let constructed: FakeSocket | undefined;
+		const bridge = createRemoteMuxBridge(() => "/tmp", {
+			fetchImpl: vi.fn(async () =>
+				new Response(JSON.stringify({ hostId: "h_lab", apiVersion: 1 }), { status: 200 }),
+			) as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+			webSocketImpl: class extends FakeSocket {
+				constructor(url: string, opts: { headers?: Record<string, string> }) {
+					super(url, opts);
+					constructed = this;
+				}
+			} as unknown as typeof import("ws").WebSocket,
+		});
+		const sender = mockSender();
+		const { connectionId } = await bridge.connect(sender);
+		await vi.waitFor(() => constructed?.readyState === FakeSocket.OPEN);
+		expect(sender.events).toEqual([]);
+		bridge.subscribe(sender, connectionId);
+		expect(sender.events.map((e) => (e.event as { type: string }).type)).toEqual(["open"]);
+	});
+
+	it("cancels pending mux connects when the renderer is destroyed", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const ctor = vi.fn();
+		const bridge = createRemoteMuxBridge(() => "/tmp", {
+			fetchImpl: vi.fn(async () => {
+				await gate;
+				return new Response(JSON.stringify({ hostId: "h_lab", apiVersion: 1 }), { status: 200 });
+			}) as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+			webSocketImpl: ctor as unknown as typeof import("ws").WebSocket,
+		});
+		const sender = mockSender();
+		const pending = bridge.connect(sender);
+		sender.destroy();
+		release();
+		await expect(pending).rejects.toThrow(/cancelled/i);
+		expect(ctor).not.toHaveBeenCalled();
 	});
 
 	it("fails closed on host mismatch without opening a socket", async () => {

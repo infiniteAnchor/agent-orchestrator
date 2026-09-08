@@ -17,6 +17,7 @@ import {
 } from "./remote-identity-gate";
 
 export const REMOTE_MUX_CONNECT_CHANNEL = "remoteMux:connect";
+export const REMOTE_MUX_SUBSCRIBE_CHANNEL = "remoteMux:subscribe";
 export const REMOTE_MUX_SEND_CHANNEL = "remoteMux:send";
 export const REMOTE_MUX_CLOSE_CHANNEL = "remoteMux:close";
 
@@ -28,6 +29,9 @@ export function remoteMuxEventChannel(connectionId: string): string {
 export const REMOTE_MUX_FRAME_LIMIT = 1 << 20;
 
 export const MAX_MUX_CONNECTIONS_PER_WEBCONTENTS = 4;
+
+/** Bound deferred events until the renderer subscribes to the IPC channel. */
+const MAX_PENDING_MUX_EVENTS = 64;
 
 export type RemoteMuxClientEvent =
 	| { type: "open" }
@@ -44,6 +48,7 @@ export interface RemoteMuxSender {
 
 export interface RemoteMuxBridge {
 	connect(sender: RemoteMuxSender): Promise<{ connectionId: string }>;
+	subscribe(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown): void;
 	send(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown, data: unknown): void;
 	close(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown): void;
 }
@@ -54,6 +59,7 @@ export interface RemoteMuxBridgeOptions {
 		baseUrl: string;
 		pinnedHostId: string;
 		fetchImpl?: typeof fetch;
+		signal?: AbortSignal;
 	}) => Promise<IdentityGateResult>;
 	fetchImpl?: typeof fetch;
 	/** Test seam for the WebSocket constructor. */
@@ -70,10 +76,18 @@ function muxWsUrl(baseUrl: string): string {
 }
 
 interface ActiveMuxConnection {
+	connectionId: string;
 	socket: WebSocket;
 	sender: RemoteMuxSender;
 	channel: string;
 	closed: boolean;
+	subscribed: boolean;
+	pendingEvents: RemoteMuxClientEvent[];
+}
+
+interface PendingMuxConnect {
+	cancelled: boolean;
+	abort: AbortController;
 }
 
 export function createRemoteMuxBridge(
@@ -87,12 +101,32 @@ export function createRemoteMuxBridge(
 	const WebSocketImpl = options.webSocketImpl ?? WebSocket;
 
 	const connections = new Map<string, ActiveMuxConnection>();
+	const pendingConnects = new Map<string, PendingMuxConnect>();
 	const idsBySender = new Map<number, Set<string>>();
+
+	function deliverEvent(conn: ActiveMuxConnection, event: RemoteMuxClientEvent): void {
+		if (conn.sender.isDestroyed()) return;
+		if (!conn.subscribed) {
+			if (conn.pendingEvents.length >= MAX_PENDING_MUX_EVENTS) {
+				teardown(conn.connectionId, conn, false);
+				return;
+			}
+			conn.pendingEvents.push(event);
+			return;
+		}
+		conn.sender.send(conn.channel, event);
+	}
+
+	function emitEvent(conn: ActiveMuxConnection, event: RemoteMuxClientEvent): void {
+		if (conn.closed) return;
+		deliverEvent(conn, event);
+	}
 
 	function teardown(connectionId: string, conn: ActiveMuxConnection, emitClose = true): void {
 		if (conn.closed) return;
 		conn.closed = true;
 		connections.delete(connectionId);
+		pendingConnects.delete(connectionId);
 		idsBySender.get(conn.sender.id)?.delete(connectionId);
 		try {
 			conn.socket.close();
@@ -100,8 +134,16 @@ export function createRemoteMuxBridge(
 			// already closing
 		}
 		if (emitClose && !conn.sender.isDestroyed()) {
-			conn.sender.send(conn.channel, { type: "close" });
+			deliverEvent(conn, { type: "close" });
 		}
+	}
+
+	function cancelPendingConnect(connectionId: string): void {
+		const pending = pendingConnects.get(connectionId);
+		if (pending === undefined) return;
+		pending.cancelled = true;
+		pending.abort.abort();
+		pendingConnects.delete(connectionId);
 	}
 
 	function trackSender(sender: RemoteMuxSender): Set<string> {
@@ -113,6 +155,7 @@ export function createRemoteMuxBridge(
 				const orphaned = idsBySender.get(sender.id);
 				idsBySender.delete(sender.id);
 				for (const connectionId of orphaned ?? []) {
+					cancelPendingConnect(connectionId);
 					const conn = connections.get(connectionId);
 					if (conn !== undefined) teardown(connectionId, conn, false);
 				}
@@ -132,12 +175,18 @@ export function createRemoteMuxBridge(
 		// pass the cap while profile lookup / identity verification are in flight.
 		const connectionId = randomUUID();
 		ids.add(connectionId);
+		const pending: PendingMuxConnect = { cancelled: false, abort: new AbortController() };
+		pendingConnects.set(connectionId, pending);
 		const releaseReservation = (): void => {
+			cancelPendingConnect(connectionId);
 			ids.delete(connectionId);
 		};
 
 		try {
 			const profile = await getActiveProfile();
+			if (pending.cancelled || sender.isDestroyed()) {
+				throw new Error("Remote mux connect cancelled.");
+			}
 			if (profile === null) {
 				throw new Error("No remote AO server is selected.");
 			}
@@ -145,7 +194,11 @@ export function createRemoteMuxBridge(
 				baseUrl: profile.baseUrl,
 				pinnedHostId: profile.pinnedHostId,
 				fetchImpl: doFetch,
+				signal: pending.abort.signal,
 			});
+			if (pending.cancelled || sender.isDestroyed()) {
+				throw new Error("Remote mux connect cancelled.");
+			}
 			if (!gate.ok) {
 				throw new Error(gate.message);
 			}
@@ -156,48 +209,48 @@ export function createRemoteMuxBridge(
 				maxPayload: REMOTE_MUX_FRAME_LIMIT,
 			});
 
+			pendingConnects.delete(connectionId);
 			const conn: ActiveMuxConnection = {
+				connectionId,
 				socket,
 				sender,
 				channel,
 				closed: false,
+				subscribed: false,
+				pendingEvents: [],
 			};
 			connections.set(connectionId, conn);
 
 			socket.on("open", () => {
-				if (conn.closed || sender.isDestroyed()) return;
-				sender.send(channel, { type: "open" });
+				emitEvent(conn, { type: "open" });
 			});
 			socket.on("message", (data, isBinary) => {
 				if (conn.closed || sender.isDestroyed()) return;
 				if (isBinary) {
-					sender.send(channel, { type: "error", message: "Binary mux frames are not supported." });
+					emitEvent(conn, { type: "error", message: "Binary mux frames are not supported." });
 					return;
 				}
 				const text = typeof data === "string" ? data : data.toString("utf8");
 				if (Buffer.byteLength(text, "utf8") > REMOTE_MUX_FRAME_LIMIT) {
-					sender.send(channel, { type: "error", message: "Mux frame exceeds size limit." });
+					emitEvent(conn, { type: "error", message: "Mux frame exceeds size limit." });
 					teardown(connectionId, conn);
 					return;
 				}
-				sender.send(channel, { type: "message", data: text });
+				emitEvent(conn, { type: "message", data: text });
 			});
 			socket.on("close", (code, reason) => {
 				if (conn.closed) return;
 				conn.closed = true;
 				connections.delete(connectionId);
 				idsBySender.get(sender.id)?.delete(connectionId);
-				if (!sender.isDestroyed()) {
-					sender.send(channel, {
-						type: "close",
-						code,
-						reason: reason.toString("utf8"),
-					});
-				}
+				deliverEvent(conn, {
+					type: "close",
+					code,
+					reason: reason.toString("utf8"),
+				});
 			});
 			socket.on("error", (err) => {
-				if (conn.closed || sender.isDestroyed()) return;
-				sender.send(channel, {
+				emitEvent(conn, {
 					type: "error",
 					message: err instanceof Error ? err.message : String(err),
 				});
@@ -207,6 +260,19 @@ export function createRemoteMuxBridge(
 		} catch (error) {
 			releaseReservation();
 			throw error;
+		}
+	}
+
+	function subscribe(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown): void {
+		if (typeof connectionId !== "string") return;
+		const conn = connections.get(connectionId);
+		if (conn === undefined || conn.sender.id !== sender.id || conn.closed) return;
+		if (conn.subscribed) return;
+		conn.subscribed = true;
+		const queued = conn.pendingEvents.splice(0);
+		for (const event of queued) {
+			if (conn.closed || conn.sender.isDestroyed()) return;
+			conn.sender.send(conn.channel, event);
 		}
 	}
 
@@ -221,17 +287,21 @@ export function createRemoteMuxBridge(
 
 	function close(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown): void {
 		if (typeof connectionId !== "string") return;
+		cancelPendingConnect(connectionId);
 		const conn = connections.get(connectionId);
 		if (conn === undefined || conn.sender.id !== sender.id) return;
 		teardown(connectionId, conn);
 	}
 
-	return { connect, send, close };
+	return { connect, subscribe, send, close };
 }
 
 export function installRemoteMuxBridge(getStateDir: () => string): void {
 	const bridge = createRemoteMuxBridge(getStateDir);
 	ipcMain.handle(REMOTE_MUX_CONNECT_CHANNEL, (event) => bridge.connect(event.sender));
+	ipcMain.on(REMOTE_MUX_SUBSCRIBE_CHANNEL, (event, connectionId: unknown) => {
+		bridge.subscribe(event.sender, connectionId);
+	});
 	ipcMain.on(REMOTE_MUX_SEND_CHANNEL, (event, connectionId: unknown, data: unknown) => {
 		bridge.send(event.sender, connectionId, data);
 	});

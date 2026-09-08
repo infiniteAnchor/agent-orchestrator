@@ -33,17 +33,28 @@ function jsonResponse(body: unknown, status = 200, headers?: Record<string, stri
 	});
 }
 
-function mockSender(id = 1): RemoteDaemonStreamSender & { events: Array<{ channel: string; event: unknown }> } {
+function mockSender(id = 1): RemoteDaemonStreamSender & {
+	events: Array<{ channel: string; event: unknown }>;
+	destroy: () => void;
+} {
 	const events: Array<{ channel: string; event: unknown }> = [];
+	let destroyed = false;
+	const destroyListeners: Array<() => void> = [];
 	return {
 		id,
 		events,
-		isDestroyed: () => false,
+		isDestroyed: () => destroyed,
 		send(channel, event) {
 			events.push({ channel, event });
 		},
-		once() {
+		once(event, listener) {
+			if (event === "destroyed") destroyListeners.push(listener);
 			return undefined;
+		},
+		destroy() {
+			if (destroyed) return;
+			destroyed = true;
+			for (const listener of destroyListeners.splice(0)) listener();
 		},
 	};
 }
@@ -250,6 +261,54 @@ describe("createRemoteDaemonProxy", () => {
 		});
 		await expect(proxy.request({ path: "/api/v1/projects", method: "GET" })).rejects.toThrow(
 			/IPC limit/i,
+		);
+	});
+
+	it("bounds failed SSE error bodies instead of buffering forever", async () => {
+		const oversized = "x".repeat((64 << 10) + 1);
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith("/api/v1/identity")) {
+				return jsonResponse({ hostId: "h_lab", apiVersion: 1 });
+			}
+			return new Response(oversized, {
+				status: 500,
+				headers: {
+					"content-type": "application/json",
+					"content-length": String(oversized.length),
+				},
+			});
+		});
+		const proxy = createRemoteDaemonProxy(() => "/tmp", {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+		});
+		await expect(proxy.openStream(mockSender(), { path: "/api/v1/events", method: "GET" })).rejects.toThrow(
+			new RegExp(`${REMOTE_DAEMON_STREAM_ERROR_MARKER} 500`),
+		);
+	});
+
+	it("cancels pending SSE opens when the renderer is destroyed", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith("/api/v1/identity")) {
+				await gate;
+				return jsonResponse({ hostId: "h_lab", apiVersion: 1 });
+			}
+			throw new Error("authenticated fetch must not run after cancel");
+		});
+		const proxy = createRemoteDaemonProxy(() => "/tmp", {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+		});
+		const sender = mockSender();
+		const pending = proxy.openStream(sender, { path: "/api/v1/events", method: "GET" });
+		sender.destroy();
+		release();
+		await expect(pending).rejects.toThrow(
+			new RegExp(`${REMOTE_DAEMON_STREAM_ERROR_MARKER} 499`),
 		);
 	});
 });

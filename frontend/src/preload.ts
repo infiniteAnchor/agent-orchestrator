@@ -665,6 +665,9 @@ const api = {
 	remoteMux: {
 		connect: () =>
 			ipcRenderer.invoke("remoteMux:connect") as Promise<{ connectionId: string }>,
+		subscribe: (connectionId: string) => {
+			ipcRenderer.send("remoteMux:subscribe", connectionId);
+		},
 		send: (connectionId: string, data: string) => {
 			ipcRenderer.send("remoteMux:send", connectionId, data);
 		},

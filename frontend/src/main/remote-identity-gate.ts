@@ -3,6 +3,12 @@
 // Calls unauthenticated GET /api/v1/identity and compares hostId to the pinned
 // value before any bearer is attached. A mismatch fails closed.
 
+import {
+	REMOTE_IDENTITY_BODY_LIMIT,
+	RemoteBodyLimitError,
+	readResponseBodyLimited,
+} from "./remote-body-limit";
+
 export type IdentityGateOk = {
 	ok: true;
 	hostId: string;
@@ -120,9 +126,27 @@ export async function verifyPinnedIdentity(options: IdentityGateOptions): Promis
 		};
 	}
 
+	let bodyText: string;
+	try {
+		bodyText = await readResponseBodyLimited(response, REMOTE_IDENTITY_BODY_LIMIT);
+	} catch (err) {
+		if (err instanceof RemoteBodyLimitError) {
+			return {
+				ok: false,
+				reason: "invalid_body",
+				message: `Identity probe body exceeds the ${REMOTE_IDENTITY_BODY_LIMIT}-byte limit.`,
+			};
+		}
+		return {
+			ok: false,
+			reason: "fetch_failed",
+			message: err instanceof Error ? err.message : "Identity probe body read failed.",
+		};
+	}
+
 	let body: unknown;
 	try {
-		body = await response.json();
+		body = JSON.parse(bodyText) as unknown;
 	} catch {
 		return {
 			ok: false,

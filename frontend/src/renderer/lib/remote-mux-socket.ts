@@ -6,6 +6,7 @@ import { aoBridge } from "./bridge";
 
 export type RemoteMuxBridgeApi = {
 	connect: () => Promise<{ connectionId: string }>;
+	subscribe: (connectionId: string) => void;
 	send: (connectionId: string, data: string) => void;
 	close: (connectionId: string) => void;
 	onEvent: (connectionId: string, listener: (event: RemoteMuxClientEvent) => void) => () => void;
@@ -62,6 +63,9 @@ export function createRemoteMuxWebSocketClass(
 				}
 				this.connectionId = connectionId;
 				this.unsubscribe = bridge.onEvent(connectionId, (event) => this.onBridgeEvent(event));
+				// Subscribe after the listener is attached so deferred open/message
+				// events from a fast remote socket are replayed instead of dropped.
+				bridge.subscribe(connectionId);
 				for (const frame of this.outboundQueue.splice(0)) {
 					bridge.send(connectionId, frame);
 				}
