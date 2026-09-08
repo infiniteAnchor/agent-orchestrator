@@ -121,6 +121,7 @@ type API struct {
 	browser       *controllers.BrowserController
 	system        *controllers.SystemController
 	identity      *controllers.IdentityController
+	capabilities  *controllers.CapabilitiesController
 	endpoints     *controllers.EndpointsController
 	systemInstall *controllers.SystemInstallController
 	agentAuth     *controllers.AgentAuthController
@@ -163,6 +164,7 @@ func NewAPI(cfg config.Config, deps APIDeps) *API {
 		browser:       &controllers.BrowserController{Svc: deps.Browser},
 		system:        &controllers.SystemController{Checks: deps.SystemChecks},
 		identity:      &controllers.IdentityController{HostID: deps.HostID},
+		capabilities:  &controllers.CapabilitiesController{},
 		endpoints:     &controllers.EndpointsController{Source: deps.Endpoints},
 		systemInstall: &controllers.SystemInstallController{Installer: deps.Installer},
 		agentAuth:     &controllers.AgentAuthController{Svc: deps.AgentAuth},
@@ -202,6 +204,7 @@ func (a *API) Register(root chi.Router) {
 			a.browser.Register(r)
 			a.system.Register(r)
 			a.identity.Register(r)
+			a.capabilities.Register(r)
 			a.endpoints.Register(r)
 			a.systemInstall.Register(r)
 			a.agentAuth.Register(r)

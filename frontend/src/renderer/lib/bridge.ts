@@ -263,4 +263,36 @@ export const aoBridge: AoBridge =
 			closeStream: () => undefined,
 			onStreamEvent: () => () => undefined,
 		},
+		remoteDaemon: {
+			request: async () => {
+				throw new Error("Remote daemon requests require the desktop app.");
+			},
+			openStream: async () => {
+				throw new Error("Remote daemon streams require the desktop app.");
+			},
+			closeStream: () => undefined,
+			onStreamEvent: () => () => undefined,
+		},
+		remoteConnection: {
+			get: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			enroll: async () => {
+				throw new Error("Remote enrollment requires the desktop app.");
+			},
+			setActive: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			remove: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			verifyIdentity: async () => ({
+				ok: false as const,
+				reason: "no_remote_profile" as const,
+				message: "Remote identity checks require the desktop app.",
+			}),
+		},
+		remoteMux: {
+			connect: async () => {
+				throw new Error("Remote mux requires the desktop app.");
+			},
+			subscribe: () => undefined,
+			send: () => undefined,
+			close: () => undefined,
+			onEvent: () => () => undefined,
+		},
 	} satisfies AoBridge);

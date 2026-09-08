@@ -1515,11 +1515,12 @@ type UpdateShellTerminalRequest struct {
 
 // ShellTerminalResponse is one standalone shell terminal. HandleID is what the
 // client opens on the terminal mux, exactly as it would a session's pane.
+// WorkingDir is omitempty so LAN projections can clear the absolute host path.
 type ShellTerminalResponse struct {
 	HandleID   string    `json:"handleId"`
 	ProjectID  string    `json:"projectId,omitempty"`
 	SessionID  string    `json:"sessionId,omitempty"`
-	WorkingDir string    `json:"workingDir"`
+	WorkingDir string    `json:"workingDir,omitempty"`
 	Title      string    `json:"title"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
@@ -1614,6 +1615,25 @@ type EndpointsResponse struct {
 type IdentityResponse struct {
 	HostID     string `json:"hostId"`
 	APIVersion int    `json:"apiVersion"`
+}
+
+// CapabilitiesResponse is the body of authenticated GET /api/v1/capabilities.
+// Remote desktop clients call this after identity pin verification and bearer
+// auth; it must not be folded into the unauthenticated identity probe.
+type CapabilitiesResponse struct {
+	// APIVersion mirrors the mobile contract version for shared negotiation.
+	APIVersion    int                       `json:"apiVersion"`
+	RemoteDesktop RemoteDesktopCapabilities `json:"remoteDesktop"`
+}
+
+// RemoteDesktopCapabilities describes the remote desktop control-plane surface
+// available on this daemon (LAN / Tailscale authenticated listener).
+type RemoteDesktopCapabilities struct {
+	Supported       bool     `json:"supported"`
+	ContractVersion int      `json:"contractVersion"`
+	Transports      []string `json:"transports"`
+	// Auth names the credential scheme: the shared LAN bearer password today.
+	Auth string `json:"auth"`
 }
 
 // MobileStatusResponse is the body of the Connect Mobile status/enable/disable/

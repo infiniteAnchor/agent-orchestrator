@@ -19,6 +19,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/daemonmeta"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/controllers"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	agentswitchobs "github.com/aoagents/agent-orchestrator/backend/internal/observe/agentswitch"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 	"github.com/aoagents/agent-orchestrator/backend/internal/telemetrymeta"
@@ -77,7 +78,7 @@ func NewRouterWithControl(cfg config.Config, log *slog.Logger, termMgr *terminal
 	r.MethodNotAllowed(methodNotAllowedJSON)
 
 	mountHealth(r, cfg)
-	mountTerminalMux(r, termMgr, log)
+	mountTerminalMux(r, termMgr, log, cfg.AllowedOrigins)
 	mountControl(r, control)
 	mountAgentSwitchPolicyControl(r, control.AgentSwitchPolicy)
 	mountTelemetry(r, cfg, deps.Telemetry)
@@ -160,11 +161,11 @@ func previewOriginMiddleware(sessions *controllers.SessionsController) func(http
 // mountHealth registers the liveness and readiness probes the Electron
 // supervisor polls before letting the renderer connect.
 func mountHealth(r chi.Router, cfg config.Config) {
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		envelope.WriteJSON(w, http.StatusOK, daemonProbePayload("ok", cfg))
+	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
+		envelope.WriteJSON(w, http.StatusOK, daemonProbePayload("ok", cfg, req))
 	})
-	r.Get("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		envelope.WriteJSON(w, http.StatusOK, daemonProbePayload("ready", cfg))
+	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
+		envelope.WriteJSON(w, http.StatusOK, daemonProbePayload("ready", cfg, req))
 	})
 }
 
@@ -391,11 +392,18 @@ func localControlRequest(r *http.Request) bool {
 // daemonProbePayload is shared by /healthz and /readyz. Dependency
 // initialization happens before the server is constructed, so a listening
 // daemon is ready to answer requests.
-func daemonProbePayload(status string, cfg config.Config) map[string]any {
+//
+// On LAN requests the absolute host path fields are omitted: remote desktops
+// must not learn executable/cwd/AppImage locations. Loopback keeps the full
+// payload for the local Electron supervisor's identity checks.
+func daemonProbePayload(status string, cfg config.Config, r *http.Request) map[string]any {
 	payload := map[string]any{
 		"status":  status,
 		"service": daemonmeta.ServiceName,
 		"pid":     os.Getpid(),
+	}
+	if r != nil && reqctx.IsLAN(r.Context()) {
+		return payload
 	}
 	if exe, err := os.Executable(); err == nil && exe != "" {
 		payload["executablePath"] = exe

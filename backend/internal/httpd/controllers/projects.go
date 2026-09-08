@@ -50,7 +50,7 @@ func (c *ProjectsController) clone(w http.ResponseWriter, r *http.Request) {
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusCreated, ProjectResponse{Project: p})
+	envelope.WriteJSON(w, http.StatusCreated, ProjectResponse{Project: projectForWire(r.Context(), p)})
 }
 
 func (c *ProjectsController) list(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +66,7 @@ func (c *ProjectsController) list(w http.ResponseWriter, r *http.Request) {
 	if projects == nil {
 		projects = []projectsvc.Summary{}
 	}
-	envelope.WriteJSON(w, http.StatusOK, ListProjectsResponse{Projects: projects})
+	envelope.WriteJSON(w, http.StatusOK, ListProjectsResponse{Projects: projectSummariesForWire(r.Context(), projects)})
 }
 
 func (c *ProjectsController) add(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +84,7 @@ func (c *ProjectsController) add(w http.ResponseWriter, r *http.Request) {
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusCreated, ProjectResponse{Project: p})
+	envelope.WriteJSON(w, http.StatusCreated, ProjectResponse{Project: projectForWire(r.Context(), p)})
 }
 
 func (c *ProjectsController) initialize(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +119,7 @@ func (c *ProjectsController) get(w http.ResponseWriter, r *http.Request) {
 		envelope.WriteAPIError(w, r, http.StatusInternalServerError, "internal", "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, resp)
+	envelope.WriteJSON(w, http.StatusOK, getProjectResponseForWire(r.Context(), resp))
 }
 
 func (c *ProjectsController) updateSettings(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +137,7 @@ func (c *ProjectsController) updateSettings(w http.ResponseWriter, r *http.Reque
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, ProjectResponse{Project: p})
+	envelope.WriteJSON(w, http.StatusOK, ProjectResponse{Project: projectForWire(r.Context(), p)})
 }
 
 func (c *ProjectsController) setConfig(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +155,7 @@ func (c *ProjectsController) setConfig(w http.ResponseWriter, r *http.Request) {
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, ProjectResponse{Project: p})
+	envelope.WriteJSON(w, http.StatusOK, ProjectResponse{Project: projectForWire(r.Context(), p)})
 }
 
 func (c *ProjectsController) remove(w http.ResponseWriter, r *http.Request) {
@@ -203,5 +203,5 @@ func (c *ProjectsController) setPermissions(w http.ResponseWriter, r *http.Reque
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, ProjectResponse{Project: p})
+	envelope.WriteJSON(w, http.StatusOK, ProjectResponse{Project: projectForWire(r.Context(), p)})
 }

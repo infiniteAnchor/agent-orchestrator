@@ -39,6 +39,18 @@ import type {
 	CloudCpProxyResponse,
 	CloudCpStreamEvent,
 } from "./main/cloud-cp-proxy";
+import type {
+	RemoteDaemonProxyRequestInit,
+	RemoteDaemonProxyResponse,
+	RemoteDaemonStreamEvent,
+} from "./main/remote-daemon-proxy";
+import type {
+	ConnectionMode,
+	EnrollRemoteServerInput,
+} from "./shared/remote-connection";
+import type { PublicRemoteConnectionStore } from "./main/remote-connection-store";
+import type { IdentityGateResult } from "./main/remote-identity-gate";
+import type { RemoteMuxClientEvent } from "./main/remote-mux-bridge";
 import type { UpdateOutcome } from "./shared/update-telemetry";
 import type { UiSettings } from "./main/ui-settings";
 import type { UpdateCheckOptions } from "./main/auto-updater";
@@ -610,6 +622,62 @@ const api = {
 		onStreamEvent: (streamId: string, listener: (event: CloudCpStreamEvent) => void) => {
 			const channel = `cloudCp:stream:${streamId}`;
 			const wrapped = (_event: Electron.IpcRendererEvent, event: CloudCpStreamEvent) => listener(event);
+			ipcRenderer.on(channel, wrapped);
+			return () => {
+				ipcRenderer.off(channel, wrapped);
+			};
+		},
+	},
+	// Remote AO daemon transport. Main owns the enrolled base URL + LAN bearer
+	// and runs the host-id identity gate before attaching Authorization.
+	remoteDaemon: {
+		request: (init: RemoteDaemonProxyRequestInit) =>
+			ipcRenderer.invoke("remoteDaemon:request", init) as Promise<RemoteDaemonProxyResponse>,
+		openStream: (init: RemoteDaemonProxyRequestInit) =>
+			ipcRenderer.invoke("remoteDaemon:openStream", init) as Promise<{ streamId: string }>,
+		closeStream: (streamId: string) => {
+			ipcRenderer.send("remoteDaemon:closeStream", streamId);
+		},
+		onStreamEvent: (streamId: string, listener: (event: RemoteDaemonStreamEvent) => void) => {
+			const channel = `remoteDaemon:stream:${streamId}`;
+			const wrapped = (_event: Electron.IpcRendererEvent, event: RemoteDaemonStreamEvent) =>
+				listener(event);
+			ipcRenderer.on(channel, wrapped);
+			return () => {
+				ipcRenderer.off(channel, wrapped);
+			};
+		},
+	},
+	remoteConnection: {
+		get: () =>
+			ipcRenderer.invoke("remoteConnection:get") as Promise<PublicRemoteConnectionStore>,
+		enroll: (input: EnrollRemoteServerInput) =>
+			ipcRenderer.invoke("remoteConnection:enroll", input) as Promise<PublicRemoteConnectionStore>,
+		setActive: (mode: ConnectionMode) =>
+			ipcRenderer.invoke("remoteConnection:setActive", mode) as Promise<PublicRemoteConnectionStore>,
+		remove: (profileId: string) =>
+			ipcRenderer.invoke("remoteConnection:remove", profileId) as Promise<PublicRemoteConnectionStore>,
+		verifyIdentity: () =>
+			ipcRenderer.invoke("remoteConnection:verifyIdentity") as Promise<
+				IdentityGateResult | { ok: false; reason: "no_remote_profile"; message: string }
+			>,
+	},
+	remoteMux: {
+		connect: () =>
+			ipcRenderer.invoke("remoteMux:connect") as Promise<{ connectionId: string }>,
+		subscribe: (connectionId: string) => {
+			ipcRenderer.send("remoteMux:subscribe", connectionId);
+		},
+		send: (connectionId: string, data: string) => {
+			ipcRenderer.send("remoteMux:send", connectionId, data);
+		},
+		close: (connectionId: string) => {
+			ipcRenderer.send("remoteMux:close", connectionId);
+		},
+		onEvent: (connectionId: string, listener: (event: RemoteMuxClientEvent) => void) => {
+			const channel = `remoteMux:event:${connectionId}`;
+			const wrapped = (_event: Electron.IpcRendererEvent, event: RemoteMuxClientEvent) =>
+				listener(event);
 			ipcRenderer.on(channel, wrapped);
 			return () => {
 				ipcRenderer.off(channel, wrapped);

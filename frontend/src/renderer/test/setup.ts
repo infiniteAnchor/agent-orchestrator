@@ -344,5 +344,29 @@ if (typeof window !== "undefined") {
 			closeStream: () => undefined,
 			onStreamEvent: () => () => undefined,
 		},
+		remoteDaemon: {
+			request: async () => ({ status: 503, headers: {}, body: "" }),
+			openStream: async () => ({ streamId: "stream_test" }),
+			closeStream: () => undefined,
+			onStreamEvent: () => () => undefined,
+		},
+		remoteConnection: {
+			get: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			enroll: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			setActive: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			remove: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+			verifyIdentity: async () => ({
+				ok: false as const,
+				reason: "no_remote_profile" as const,
+				message: "No remote profile in tests.",
+			}),
+		},
+		remoteMux: {
+			connect: async () => ({ connectionId: "mux_test" }),
+			subscribe: () => undefined,
+			send: () => undefined,
+			close: () => undefined,
+			onEvent: () => () => undefined,
+		},
 	};
 } // end if (typeof window !== "undefined")
