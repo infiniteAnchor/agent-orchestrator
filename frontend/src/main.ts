@@ -105,6 +105,8 @@ import {
 } from "./main/cloud-auth";
 import { installCloudLocalAuthIPC } from "./main/cloud-auth-local";
 import { installCloudCpProxy } from "./main/cloud-cp-proxy";
+import { installRemoteDaemonProxy } from "./main/remote-daemon-proxy";
+import { installRemoteConnectionIPC } from "./main/remote-connection-ipc";
 import { DEFAULT_POSTHOG_HOST, DEFAULT_POSTHOG_PROJECT_KEY } from "./shared/posthog-config";
 import { DEFAULT_SENTRY_DSN } from "./shared/sentry-config";
 import { buildTelemetryBootstrap, rendererTelemetryEnabled } from "./shared/telemetry";
@@ -2311,6 +2313,12 @@ installCloudLocalAuthIPC(cloudDataDir, notifyRenderersOfCloudSession);
 // Cloud control-plane proxy IPC — cloudCp:request/openStream/closeStream.
 // CP calls go through main so the WorkOS bearer token never reaches a renderer.
 installCloudCpProxy(cloudDataDir);
+
+// Remote AO daemon proxy IPC — remoteDaemon:request/openStream/closeStream.
+// Uses the enrolled profile under ~/.ao; identity is checked before the LAN
+// bearer is attached, and the bearer never reaches the renderer.
+installRemoteDaemonProxy(() => desktopDataDir);
+installRemoteConnectionIPC(() => desktopDataDir);
 
 function focusCloudWindow(): void {
 	const window = BaseWindow.getAllWindows()[0];
