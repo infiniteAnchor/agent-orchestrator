@@ -128,80 +128,91 @@ export function createRemoteMuxBridge(
 				`This window already has ${MAX_MUX_CONNECTIONS_PER_WEBCONTENTS} open remote mux connections.`,
 			);
 		}
-		const profile = await getActiveProfile();
-		if (profile === null) {
-			throw new Error("No remote AO server is selected.");
-		}
-		const gate = await verifyIdentity({
-			baseUrl: profile.baseUrl,
-			pinnedHostId: profile.pinnedHostId,
-			fetchImpl: doFetch,
-		});
-		if (!gate.ok) {
-			throw new Error(gate.message);
-		}
-
+		// Reserve capacity before any await so concurrent connect calls cannot all
+		// pass the cap while profile lookup / identity verification are in flight.
 		const connectionId = randomUUID();
-		const channel = remoteMuxEventChannel(connectionId);
-		const socket = new WebSocketImpl(muxWsUrl(profile.baseUrl), {
-			headers: { Authorization: `Bearer ${profile.password}` },
-			maxPayload: REMOTE_MUX_FRAME_LIMIT,
-		});
-
-		const conn: ActiveMuxConnection = {
-			socket,
-			sender,
-			channel,
-			closed: false,
-		};
-		connections.set(connectionId, conn);
 		ids.add(connectionId);
+		const releaseReservation = (): void => {
+			ids.delete(connectionId);
+		};
 
-		socket.on("open", () => {
-			if (conn.closed || sender.isDestroyed()) return;
-			sender.send(channel, { type: "open" });
-		});
-		socket.on("message", (data, isBinary) => {
-			if (conn.closed || sender.isDestroyed()) return;
-			if (isBinary) {
-				sender.send(channel, { type: "error", message: "Binary mux frames are not supported." });
-				return;
+		try {
+			const profile = await getActiveProfile();
+			if (profile === null) {
+				throw new Error("No remote AO server is selected.");
 			}
-			const text = typeof data === "string" ? data : data.toString("utf8");
-			if (text.length > REMOTE_MUX_FRAME_LIMIT) {
-				sender.send(channel, { type: "error", message: "Mux frame exceeds size limit." });
-				teardown(connectionId, conn);
-				return;
-			}
-			sender.send(channel, { type: "message", data: text });
-		});
-		socket.on("close", (code, reason) => {
-			if (conn.closed) return;
-			conn.closed = true;
-			connections.delete(connectionId);
-			idsBySender.get(sender.id)?.delete(connectionId);
-			if (!sender.isDestroyed()) {
-				sender.send(channel, {
-					type: "close",
-					code,
-					reason: reason.toString("utf8"),
-				});
-			}
-		});
-		socket.on("error", (err) => {
-			if (conn.closed || sender.isDestroyed()) return;
-			sender.send(channel, {
-				type: "error",
-				message: err instanceof Error ? err.message : String(err),
+			const gate = await verifyIdentity({
+				baseUrl: profile.baseUrl,
+				pinnedHostId: profile.pinnedHostId,
+				fetchImpl: doFetch,
 			});
-		});
+			if (!gate.ok) {
+				throw new Error(gate.message);
+			}
 
-		return { connectionId };
+			const channel = remoteMuxEventChannel(connectionId);
+			const socket = new WebSocketImpl(muxWsUrl(profile.baseUrl), {
+				headers: { Authorization: `Bearer ${profile.password}` },
+				maxPayload: REMOTE_MUX_FRAME_LIMIT,
+			});
+
+			const conn: ActiveMuxConnection = {
+				socket,
+				sender,
+				channel,
+				closed: false,
+			};
+			connections.set(connectionId, conn);
+
+			socket.on("open", () => {
+				if (conn.closed || sender.isDestroyed()) return;
+				sender.send(channel, { type: "open" });
+			});
+			socket.on("message", (data, isBinary) => {
+				if (conn.closed || sender.isDestroyed()) return;
+				if (isBinary) {
+					sender.send(channel, { type: "error", message: "Binary mux frames are not supported." });
+					return;
+				}
+				const text = typeof data === "string" ? data : data.toString("utf8");
+				if (Buffer.byteLength(text, "utf8") > REMOTE_MUX_FRAME_LIMIT) {
+					sender.send(channel, { type: "error", message: "Mux frame exceeds size limit." });
+					teardown(connectionId, conn);
+					return;
+				}
+				sender.send(channel, { type: "message", data: text });
+			});
+			socket.on("close", (code, reason) => {
+				if (conn.closed) return;
+				conn.closed = true;
+				connections.delete(connectionId);
+				idsBySender.get(sender.id)?.delete(connectionId);
+				if (!sender.isDestroyed()) {
+					sender.send(channel, {
+						type: "close",
+						code,
+						reason: reason.toString("utf8"),
+					});
+				}
+			});
+			socket.on("error", (err) => {
+				if (conn.closed || sender.isDestroyed()) return;
+				sender.send(channel, {
+					type: "error",
+					message: err instanceof Error ? err.message : String(err),
+				});
+			});
+
+			return { connectionId };
+		} catch (error) {
+			releaseReservation();
+			throw error;
+		}
 	}
 
 	function send(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown, data: unknown): void {
 		if (typeof connectionId !== "string" || typeof data !== "string") return;
-		if (data.length > REMOTE_MUX_FRAME_LIMIT) return;
+		if (Buffer.byteLength(data, "utf8") > REMOTE_MUX_FRAME_LIMIT) return;
 		const conn = connections.get(connectionId);
 		if (conn === undefined || conn.sender.id !== sender.id || conn.closed) return;
 		if (conn.socket.readyState !== WebSocketImpl.OPEN) return;

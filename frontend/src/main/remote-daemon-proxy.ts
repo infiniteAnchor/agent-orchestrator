@@ -26,6 +26,9 @@ export function remoteDaemonStreamChannel(streamId: string): string {
 
 export const MAX_STREAMS_PER_WEBCONTENTS = 8;
 
+/** Cap buffered HTTP bodies before they cross IPC into the renderer. */
+export const REMOTE_DAEMON_RESPONSE_BODY_LIMIT = 16 << 20; // 16 MiB
+
 export const REMOTE_DAEMON_STREAM_ERROR_MARKER = "REMOTE_DAEMON_STREAM_ERROR";
 
 /** Paths the remote desktop may call. Everything else is rejected before fetch. */
@@ -222,6 +225,40 @@ async function envelopeMessage(response: Response): Promise<string> {
 	return fallback;
 }
 
+async function readBodyLimited(response: Response, limit: number): Promise<string> {
+	const contentLength = response.headers.get("content-length");
+	if (contentLength !== null) {
+		const declared = Number(contentLength);
+		if (Number.isFinite(declared) && declared > limit) {
+			throw invalid(`response body exceeds the ${limit}-byte IPC limit.`);
+		}
+	}
+	if (response.body === null) {
+		return "";
+	}
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value === undefined || value.byteLength === 0) continue;
+			total += value.byteLength;
+			if (total > limit) {
+				await reader.cancel().catch(() => undefined);
+				throw invalid(`response body exceeds the ${limit}-byte IPC limit.`);
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	if (chunks.length === 0) return "";
+	if (chunks.length === 1) return Buffer.from(chunks[0]!).toString("utf8");
+	return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+
 interface ActiveStream {
 	controller: AbortController;
 	sender: RemoteDaemonStreamSender;
@@ -320,12 +357,29 @@ export function createRemoteDaemonProxy(
 			method: valid.method.toUpperCase(),
 			headers: buildHeaders(valid.headers, auth.profile.password),
 			body: valid.body,
+			// Authenticated requests must not follow redirects off the enrolled origin.
+			redirect: "manual",
 		});
+		if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+			return {
+				status: 502,
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					error: "redirect",
+					code: "REDIRECT",
+					message: "Remote daemon response redirected; the request was not followed.",
+				}),
+			};
+		}
 		const headers: Record<string, string> = {};
 		response.headers.forEach((value, key) => {
 			headers[key] = value;
 		});
-		return { status: response.status, headers, body: await response.text() };
+		return {
+			status: response.status,
+			headers,
+			body: await readBodyLimited(response, REMOTE_DAEMON_RESPONSE_BODY_LIMIT),
+		};
 	}
 
 	async function openStream(
@@ -340,46 +394,61 @@ export function createRemoteDaemonProxy(
 				`This window already has ${MAX_STREAMS_PER_WEBCONTENTS} open remote daemon streams.`,
 			);
 		}
-		const auth = await authorize();
-		if (!auth.ok) {
-			let detail = "Remote daemon authorization failed.";
-			try {
-				const parsed = JSON.parse(auth.response.body) as { message?: unknown };
-				if (typeof parsed.message === "string" && parsed.message !== "") detail = parsed.message;
-			} catch {
-				// keep default detail
-			}
-			throw streamError(auth.response.status, detail);
-		}
-		const url = resolveTargetUrl(auth.profile.baseUrl, valid.path);
-		const controller = new AbortController();
-		const response = await doFetch(url, {
-			method: valid.method.toUpperCase(),
-			headers: buildHeaders(valid.headers, auth.profile.password),
-			body: valid.body,
-			signal: controller.signal,
-		});
-		if (!response.ok) {
-			throw streamError(response.status, await envelopeMessage(response));
-		}
-		if (response.body === null) {
-			throw streamError(response.status, "The event stream response has no body.");
-		}
-
+		// Reserve capacity before any await so concurrent openStream calls cannot
+		// all pass the cap while identity/fetch are in flight.
 		const streamId = randomUUID();
-		const stream: ActiveStream = {
-			controller,
-			sender,
-			channel: remoteDaemonStreamChannel(streamId),
-			closed: false,
-		};
-		streams.set(streamId, stream);
 		ids.add(streamId);
-		const body = response.body;
-		setImmediate(() => {
-			void pump(streamId, stream, body);
-		});
-		return { streamId };
+		const releaseReservation = (): void => {
+			ids.delete(streamId);
+		};
+
+		try {
+			const auth = await authorize();
+			if (!auth.ok) {
+				let detail = "Remote daemon authorization failed.";
+				try {
+					const parsed = JSON.parse(auth.response.body) as { message?: unknown };
+					if (typeof parsed.message === "string" && parsed.message !== "") detail = parsed.message;
+				} catch {
+					// keep default detail
+				}
+				throw streamError(auth.response.status, detail);
+			}
+			const url = resolveTargetUrl(auth.profile.baseUrl, valid.path);
+			const controller = new AbortController();
+			const response = await doFetch(url, {
+				method: valid.method.toUpperCase(),
+				headers: buildHeaders(valid.headers, auth.profile.password),
+				body: valid.body,
+				signal: controller.signal,
+				redirect: "manual",
+			});
+			if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+				throw streamError(502, "Remote daemon stream redirected; the request was not followed.");
+			}
+			if (!response.ok) {
+				throw streamError(response.status, await envelopeMessage(response));
+			}
+			if (response.body === null) {
+				throw streamError(response.status, "The event stream response has no body.");
+			}
+
+			const stream: ActiveStream = {
+				controller,
+				sender,
+				channel: remoteDaemonStreamChannel(streamId),
+				closed: false,
+			};
+			streams.set(streamId, stream);
+			const body = response.body;
+			setImmediate(() => {
+				void pump(streamId, stream, body);
+			});
+			return { streamId };
+		} catch (error) {
+			releaseReservation();
+			throw error;
+		}
 	}
 
 	function closeStream(sender: Pick<RemoteDaemonStreamSender, "id">, streamId: unknown): void {

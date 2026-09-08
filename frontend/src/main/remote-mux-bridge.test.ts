@@ -92,8 +92,9 @@ describe("createRemoteMuxBridge", () => {
 		const { connectionId } = await bridge.connect(sender);
 		expect(connectionId).toBeTruthy();
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
-		expect(fetchImpl.mock.calls.map((call) => String(call[0])).join("\n")).toContain(
-			"/api/v1/identity",
+		expect(fetchImpl).toHaveBeenCalledWith(
+			expect.stringContaining("/api/v1/identity"),
+			expect.anything(),
 		);
 		expect(constructed?.url).toBe("ws://100.64.0.1:3011/mux");
 		expect(constructed?.headers.Authorization).toBe("Bearer secret12");
@@ -153,6 +154,32 @@ describe("createRemoteMuxBridge", () => {
 		expect(constructed?.sent).toEqual([]);
 	});
 
+	it("drops outbound frames that exceed the limit in UTF-8 bytes", async () => {
+		let constructed: FakeSocket | undefined;
+		const bridge = createRemoteMuxBridge(() => "/tmp", {
+			fetchImpl: vi.fn(async () =>
+				new Response(JSON.stringify({ hostId: "h_lab", apiVersion: 1 }), { status: 200 }),
+			) as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+			webSocketImpl: class extends FakeSocket {
+				constructor(url: string, opts: { headers?: Record<string, string> }) {
+					super(url, opts);
+					constructed = this;
+				}
+			} as unknown as typeof import("ws").WebSocket,
+		});
+		const sender = mockSender();
+		const { connectionId } = await bridge.connect(sender);
+		await vi.waitFor(() => constructed?.readyState === FakeSocket.OPEN);
+		// U+20AC is 3 UTF-8 bytes but one UTF-16 code unit; length in code units is under
+		// the limit while UTF-8 bytes exceed it.
+		const payload = "€".repeat(Math.floor(REMOTE_MUX_FRAME_LIMIT / 2) + 1);
+		expect(payload.length).toBeLessThanOrEqual(REMOTE_MUX_FRAME_LIMIT);
+		expect(Buffer.byteLength(payload, "utf8")).toBeGreaterThan(REMOTE_MUX_FRAME_LIMIT);
+		bridge.send(sender, connectionId, payload);
+		expect(constructed?.sent).toEqual([]);
+	});
+
 	it("caps concurrent mux connections per sender", async () => {
 		const bridge = createRemoteMuxBridge(() => "/tmp", {
 			fetchImpl: vi.fn(async () =>
@@ -166,5 +193,30 @@ describe("createRemoteMuxBridge", () => {
 			await bridge.connect(sender);
 		}
 		await expect(bridge.connect(sender)).rejects.toThrow(/already has/);
+	});
+
+	it("reserves mux capacity before awaiting authorization", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const bridge = createRemoteMuxBridge(() => "/tmp", {
+			fetchImpl: vi.fn(async () => {
+				await gate;
+				return new Response(JSON.stringify({ hostId: "h_lab", apiVersion: 1 }), { status: 200 });
+			}) as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+			webSocketImpl: FakeSocket as unknown as typeof import("ws").WebSocket,
+		});
+		const sender = mockSender();
+		const pending = Array.from({ length: MAX_MUX_CONNECTIONS_PER_WEBCONTENTS + 1 }, () =>
+			bridge.connect(sender),
+		);
+		release();
+		const results = await Promise.allSettled(pending);
+		expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(
+			MAX_MUX_CONNECTIONS_PER_WEBCONTENTS,
+		);
+		expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
 	});
 });

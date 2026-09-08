@@ -15,6 +15,7 @@ describe("verifyPinnedIdentity", () => {
 			expect(init?.method).toBe("GET");
 			expect((init?.headers as Record<string, string>).Accept).toBe("application/json");
 			expect(init?.credentials).toBe("omit");
+			expect(init?.redirect).toBe("manual");
 			const headers = new Headers(init?.headers);
 			expect(headers.get("authorization")).toBeNull();
 			return jsonResponse({ hostId: "h_abc", apiVersion: 1 });
@@ -26,6 +27,28 @@ describe("verifyPinnedIdentity", () => {
 			fetchImpl: fetchImpl as unknown as typeof fetch,
 		});
 		expect(result).toEqual({ ok: true, hostId: "h_abc", apiVersion: 1 });
+	});
+
+	it("rejects redirects without sending a bearer", async () => {
+		const fetchImpl = vi.fn(async () =>
+			new Response(null, {
+				status: 302,
+				headers: { Location: "http://genuine.example:3011/api/v1/identity" },
+			}),
+		);
+		const result = await verifyPinnedIdentity({
+			baseUrl: "http://attacker.example:3011",
+			pinnedHostId: "h_abc",
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+		});
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe("redirect");
+		expect(result.message).toMatch(/not sent/i);
+		expect(fetchImpl).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({ redirect: "manual" }),
+		);
 	});
 
 	it("fails closed on host mismatch without implying a bearer was sent", async () => {

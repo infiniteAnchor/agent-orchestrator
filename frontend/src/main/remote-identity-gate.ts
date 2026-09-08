@@ -14,6 +14,7 @@ export type IdentityGateFail = {
 	reason:
 		| "fetch_failed"
 		| "bad_status"
+		| "redirect"
 		| "invalid_body"
 		| "host_mismatch"
 		| "missing_pin";
@@ -55,14 +56,19 @@ export async function verifyPinnedIdentity(options: IdentityGateOptions): Promis
 	}
 
 	const doFetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
+	const probeUrl = identityUrl(options.baseUrl);
 	let response: Response;
 	try {
-		response = await doFetch(identityUrl(options.baseUrl), {
+		response = await doFetch(probeUrl, {
 			method: "GET",
 			headers: { Accept: "application/json" },
 			signal: options.signal,
 			// Explicitly omit credentials so a browser-ish fetch never attaches cookies.
 			credentials: "omit",
+			// Never follow redirects: a hijacked enrolled address could otherwise
+			// bounce this probe to the genuine pinned host, match hostId, then
+			// receive the bearer on the original (attacker-controlled) origin.
+			redirect: "manual",
 		});
 	} catch (err) {
 		return {
@@ -70,6 +76,39 @@ export async function verifyPinnedIdentity(options: IdentityGateOptions): Promis
 			reason: "fetch_failed",
 			message: err instanceof Error ? err.message : "Identity probe failed.",
 		};
+	}
+
+	if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+		return {
+			ok: false,
+			reason: "redirect",
+			status: response.status,
+			message:
+				"Identity probe followed or returned a redirect. The connection secret was not sent.",
+		};
+	}
+
+	// Fail closed if the runtime rewrote the final URL away from the enrolled origin.
+	if (response.url) {
+		try {
+			const expected = new URL(probeUrl);
+			const actual = new URL(response.url);
+			if (actual.origin !== expected.origin || actual.pathname !== expected.pathname) {
+				return {
+					ok: false,
+					reason: "redirect",
+					message:
+						"Identity probe resolved to a different origin or path. The connection secret was not sent.",
+				};
+			}
+		} catch {
+			return {
+				ok: false,
+				reason: "redirect",
+				message:
+					"Identity probe returned an unparseable final URL. The connection secret was not sent.",
+			};
+		}
 	}
 
 	if (!response.ok) {

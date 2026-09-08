@@ -10,6 +10,7 @@ vi.mock("electron", () => ({
 import {
 	createRemoteDaemonProxy,
 	MAX_STREAMS_PER_WEBCONTENTS,
+	REMOTE_DAEMON_RESPONSE_BODY_LIMIT,
 	REMOTE_DAEMON_STREAM_ERROR_MARKER,
 	type RemoteDaemonStreamSender,
 } from "./remote-daemon-proxy";
@@ -193,6 +194,62 @@ describe("createRemoteDaemonProxy", () => {
 		}
 		await expect(proxy.openStream(sender, { path: "/api/v1/events", method: "GET" })).rejects.toThrow(
 			new RegExp(`${REMOTE_DAEMON_STREAM_ERROR_MARKER} 429`),
+		);
+	});
+
+	it("reserves stream capacity before awaiting authorization", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith("/api/v1/identity")) {
+				await gate;
+				return jsonResponse({ hostId: "h_lab", apiVersion: 1 });
+			}
+			const stream = new ReadableStream<Uint8Array>({
+				start() {
+					/* leave open */
+				},
+			});
+			return new Response(stream, { status: 200 });
+		});
+		const proxy = createRemoteDaemonProxy(() => "/tmp", {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+		});
+		const sender = mockSender();
+		const pending = Array.from({ length: MAX_STREAMS_PER_WEBCONTENTS + 1 }, () =>
+			proxy.openStream(sender, { path: "/api/v1/events", method: "GET" }),
+		);
+		release();
+		const results = await Promise.allSettled(pending);
+		const fulfilled = results.filter((r) => r.status === "fulfilled");
+		const rejected = results.filter((r) => r.status === "rejected");
+		expect(fulfilled).toHaveLength(MAX_STREAMS_PER_WEBCONTENTS);
+		expect(rejected).toHaveLength(1);
+		expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(
+			new RegExp(`${REMOTE_DAEMON_STREAM_ERROR_MARKER} 429`),
+		);
+	});
+
+	it("rejects oversized HTTP response bodies before IPC", async () => {
+		const oversized = "x".repeat(REMOTE_DAEMON_RESPONSE_BODY_LIMIT + 1);
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith("/api/v1/identity")) {
+				return jsonResponse({ hostId: "h_lab", apiVersion: 1 });
+			}
+			return new Response(oversized, {
+				status: 200,
+				headers: { "content-type": "text/plain", "content-length": String(oversized.length) },
+			});
+		});
+		const proxy = createRemoteDaemonProxy(() => "/tmp", {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+		});
+		await expect(proxy.request({ path: "/api/v1/projects", method: "GET" })).rejects.toThrow(
+			/IPC limit/i,
 		);
 	});
 });
