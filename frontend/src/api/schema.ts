@@ -3132,7 +3132,7 @@ export interface components {
             /** @enum {string} */
             kind: "single_repo" | "workspace" | "scratch";
             name: string;
-            path: string;
+            path?: string;
             resolveError: string;
         };
         DelegateTaskRequest: {
@@ -3579,7 +3579,7 @@ export interface components {
             /** @enum {string} */
             kind: "single_repo" | "workspace" | "scratch";
             name: string;
-            path: string;
+            path?: string;
             repo: string;
             workspaceRepos?: components["schemas"]["WorkspaceRepo"][];
         };
@@ -3619,7 +3619,7 @@ export interface components {
             kind: "single_repo" | "workspace" | "scratch";
             name: string;
             orchestratorAgent?: string;
-            path: string;
+            path?: string;
             resolveError?: string;
             sessionPrefix: string;
         };
@@ -4059,7 +4059,7 @@ export interface components {
             projectId?: string;
             sessionId?: string;
             title: string;
-            workingDir: string;
+            workingDir?: string;
         };
         SpawnOrchestratorRequest: {
             clean?: boolean;

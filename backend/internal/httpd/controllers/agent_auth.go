@@ -51,6 +51,6 @@ func (c *AgentAuthController) start(w http.ResponseWriter, r *http.Request) {
 		Action:        result.Action,
 		Guidance:      result.Guidance,
 		TerminalInput: result.TerminalInput,
-		Terminal:      shellTerminalResponse(result.Terminal),
+		Terminal:      shellTerminalResponse(r.Context(), result.Terminal),
 	})
 }

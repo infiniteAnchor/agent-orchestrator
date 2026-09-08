@@ -3,10 +3,11 @@ package project
 import "github.com/aoagents/agent-orchestrator/backend/internal/domain"
 
 // Summary is the row shape returned by GET /api/v1/projects.
+// Path is omitempty so LAN projections can clear it without leaving "".
 type Summary struct {
 	ID                domain.ProjectID    `json:"id"`
 	Name              string              `json:"name"`
-	Path              string              `json:"path"`
+	Path              string              `json:"path,omitempty"`
 	Kind              domain.ProjectKind  `json:"kind" enum:"single_repo,workspace,scratch"`
 	SessionPrefix     string              `json:"sessionPrefix"`
 	OrchestratorAgent domain.AgentHarness `json:"orchestratorAgent,omitempty"`
@@ -15,11 +16,12 @@ type Summary struct {
 }
 
 // Project is the full read-model returned by GET /api/v1/projects/{id}.
+// Path is omitempty so LAN projections can clear it without leaving "".
 type Project struct {
 	ID             domain.ProjectID      `json:"id"`
 	Name           string                `json:"name"`
 	Kind           domain.ProjectKind    `json:"kind" enum:"single_repo,workspace,scratch"`
-	Path           string                `json:"path"`
+	Path           string                `json:"path,omitempty"`
 	Repo           string                `json:"repo"`
 	DefaultBranch  string                `json:"defaultBranch"`
 	Agent          string                `json:"agent,omitempty"`
@@ -29,11 +31,12 @@ type Project struct {
 }
 
 // Degraded is returned in place of Project when project config failed to load.
+// Path is omitempty so LAN projections can clear it without leaving "".
 type Degraded struct {
 	ID           domain.ProjectID   `json:"id"`
 	Name         string             `json:"name"`
 	Kind         domain.ProjectKind `json:"kind" enum:"single_repo,workspace,scratch"`
-	Path         string             `json:"path"`
+	Path         string             `json:"path,omitempty"`
 	ResolveError string             `json:"resolveError"`
 }
 

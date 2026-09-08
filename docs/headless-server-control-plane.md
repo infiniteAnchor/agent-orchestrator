@@ -469,6 +469,15 @@ Later phases below are unchanged.
 - Add `/mux` origin checks and bounded IPC framing, and integrate reconnects with
   the existing durable event cursor without relying on browser `EventSource`.
 
+**Phase 2 progress (backend projections):** LAN requests are marked via
+`reqctx.WithLAN` on the LAN listener. Absolute host paths are omitted on LAN for
+`/healthz`/`/readyz` (`executablePath`, `workingDirectory`,
+`startupWorkingDirectory`, `appImagePath`), project list/detail `path`, and
+shell-terminal `workingDir`. Loopback keeps the full shapes. Remaining audits
+(import flows, system requirement detail strings, conversation activity `cwd`,
+APIError `details.path`) still need projection or LAN blocklist follow-up before
+calling Phase 2 complete.
+
 ### Phase 3: durable task graph
 
 - Persist plans, phases, dependencies, attempts, and task results.

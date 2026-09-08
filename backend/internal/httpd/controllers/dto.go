@@ -1515,11 +1515,12 @@ type UpdateShellTerminalRequest struct {
 
 // ShellTerminalResponse is one standalone shell terminal. HandleID is what the
 // client opens on the terminal mux, exactly as it would a session's pane.
+// WorkingDir is omitempty so LAN projections can clear the absolute host path.
 type ShellTerminalResponse struct {
 	HandleID   string    `json:"handleId"`
 	ProjectID  string    `json:"projectId,omitempty"`
 	SessionID  string    `json:"sessionId,omitempty"`
-	WorkingDir string    `json:"workingDir"`
+	WorkingDir string    `json:"workingDir,omitempty"`
 	Title      string    `json:"title"`
 	CreatedAt  time.Time `json:"createdAt"`
 }

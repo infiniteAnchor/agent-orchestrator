@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 )
 
@@ -35,11 +36,23 @@ type LANManager struct {
 func NewLANManager(handler http.Handler, state *authState, defaultPort int, log *slog.Logger, sink ports.EventSink) *LANManager {
 	lock := newLockout(5, time.Minute, time.Now)
 	return &LANManager{
-		handler:     lanControlBlock(authMiddleware(state, lock, newMobileConnectReporter(sink, time.Now))(handler)),
+		// Outermost marks every LAN-socket request so handlers can omit
+		// host-absolute paths without trusting client Host/Origin headers.
+		handler: lanRequestContext(lanControlBlock(
+			authMiddleware(state, lock, newMobileConnectReporter(sink, time.Now))(handler),
+		)),
 		defaultPort: defaultPort,
 		log:         loggerOrDefault(log),
 		state:       state,
 	}
+}
+
+// lanRequestContext stamps reqctx.WithLAN on every request that arrived on the
+// LAN listener. Controllers use reqctx.IsLAN to choose remote-safe projections.
+func lanRequestContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(reqctx.WithLAN(r.Context())))
+	})
 }
 
 // lanControlBlockedPrefixes are the loopback-only daemon-control route

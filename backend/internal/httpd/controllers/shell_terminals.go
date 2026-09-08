@@ -13,6 +13,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apispec"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	shelltermsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/shellterm"
 )
 
@@ -50,7 +51,7 @@ func (c *ShellTerminalsController) list(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	envelope.WriteJSON(w, http.StatusOK, ListShellTerminalsResponse{
-		ShellTerminals: shellTerminalResponses(terminals),
+		ShellTerminals: shellTerminalResponses(r.Context(), terminals),
 	})
 }
 
@@ -76,7 +77,7 @@ func (c *ShellTerminalsController) open(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	envelope.WriteJSON(w, http.StatusCreated, ShellTerminalEnvelope{
-		ShellTerminal: shellTerminalResponse(terminal),
+		ShellTerminal: shellTerminalResponse(r.Context(), terminal),
 	})
 }
 
@@ -101,7 +102,7 @@ func (c *ShellTerminalsController) rename(w http.ResponseWriter, r *http.Request
 		return
 	}
 	envelope.WriteJSON(w, http.StatusOK, ShellTerminalEnvelope{
-		ShellTerminal: shellTerminalResponse(terminal),
+		ShellTerminal: shellTerminalResponse(r.Context(), terminal),
 	})
 }
 
@@ -122,20 +123,24 @@ func (c *ShellTerminalsController) close(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func shellTerminalResponses(in []shelltermsvc.ShellTerminal) []ShellTerminalResponse {
+func shellTerminalResponses(ctx context.Context, in []shelltermsvc.ShellTerminal) []ShellTerminalResponse {
 	out := make([]ShellTerminalResponse, 0, len(in))
 	for _, t := range in {
-		out = append(out, shellTerminalResponse(t))
+		out = append(out, shellTerminalResponse(ctx, t))
 	}
 	return out
 }
 
-func shellTerminalResponse(t shelltermsvc.ShellTerminal) ShellTerminalResponse {
+func shellTerminalResponse(ctx context.Context, t shelltermsvc.ShellTerminal) ShellTerminalResponse {
+	workingDir := t.WorkingDir
+	if reqctx.IsLAN(ctx) {
+		workingDir = ""
+	}
 	return ShellTerminalResponse{
 		HandleID:   t.HandleID,
 		ProjectID:  string(t.ProjectID),
 		SessionID:  string(t.SessionID),
-		WorkingDir: t.WorkingDir,
+		WorkingDir: workingDir,
 		Title:      t.Title,
 		CreatedAt:  t.CreatedAt,
 	}

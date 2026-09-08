@@ -8827,7 +8827,6 @@ components:
       - id
       - name
       - kind
-      - path
       - resolveError
       type: object
     DelegateTaskRequest:
@@ -10049,7 +10048,6 @@ components:
       - id
       - name
       - kind
-      - path
       - repo
       - defaultBranch
       - folderMissing
@@ -10147,7 +10145,6 @@ components:
       required:
       - id
       - name
-      - path
       - kind
       - sessionPrefix
       - folderMissing
@@ -11291,7 +11288,6 @@ components:
           type: string
       required:
       - handleId
-      - workingDir
       - title
       - createdAt
       type: object

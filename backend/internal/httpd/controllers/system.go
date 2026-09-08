@@ -42,7 +42,7 @@ func (c *SystemController) openGitHubAuthTerminal(w http.ResponseWriter, r *http
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusCreated, ShellTerminalEnvelope{ShellTerminal: shellTerminalResponse(terminal)})
+	envelope.WriteJSON(w, http.StatusCreated, ShellTerminalEnvelope{ShellTerminal: shellTerminalResponse(r.Context(), terminal)})
 }
 
 func (c *SystemController) githubAuth(w http.ResponseWriter, r *http.Request) {
