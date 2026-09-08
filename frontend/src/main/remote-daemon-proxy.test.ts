@@ -311,4 +311,44 @@ describe("createRemoteDaemonProxy", () => {
 			new RegExp(`${REMOTE_DAEMON_STREAM_ERROR_MARKER} 499`),
 		);
 	});
+
+	it("aborts the identity probe when a pending SSE open is cancelled", async () => {
+		let seenSignal: AbortSignal | undefined;
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			if (String(input).endsWith("/api/v1/identity")) {
+				const signal = init?.signal ?? undefined;
+				seenSignal = signal;
+				await new Promise<void>((_resolve, reject) => {
+					if (signal == null) {
+						reject(new Error("expected abort signal on identity probe"));
+						return;
+					}
+					if (signal.aborted) {
+						reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+						return;
+					}
+					signal.addEventListener(
+						"abort",
+						() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+						{ once: true },
+					);
+				});
+			}
+			throw new Error("authenticated fetch must not run");
+		});
+		const proxy = createRemoteDaemonProxy(() => "/tmp", {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+		});
+		const sender = mockSender();
+		const pending = proxy.openStream(sender, { path: "/api/v1/events", method: "GET" });
+		await vi.waitFor(() => {
+			expect(seenSignal).toBeDefined();
+		});
+		sender.destroy();
+		await expect(pending).rejects.toThrow(
+			new RegExp(`${REMOTE_DAEMON_STREAM_ERROR_MARKER} 499`),
+		);
+		expect(seenSignal?.aborted).toBe(true);
+	});
 });

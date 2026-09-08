@@ -172,6 +172,59 @@ describe("createRemoteMuxBridge", () => {
 		expect(ctor).not.toHaveBeenCalled();
 	});
 
+	it("replays close when the socket dies before subscribe", async () => {
+		class ImmediateCloseSocket extends EventEmitter {
+			static OPEN = 1;
+			readyState = 0;
+			headers: Record<string, string>;
+			url: string;
+			sent: string[] = [];
+			closed = false;
+
+			constructor(url: string, opts: { headers?: Record<string, string> }) {
+				super();
+				this.url = url;
+				this.headers = opts.headers ?? {};
+				queueMicrotask(() => {
+					this.readyState = 3;
+					this.closed = true;
+					this.emit("close", 1006, Buffer.from("auth failed"));
+				});
+			}
+
+			send() {
+				/* unused */
+			}
+
+			close() {
+				if (this.closed) return;
+				this.closed = true;
+				this.readyState = 3;
+				this.emit("close", 1000, Buffer.from("bye"));
+			}
+		}
+		const bridge = createRemoteMuxBridge(() => "/tmp", {
+			fetchImpl: vi.fn(async () =>
+				new Response(JSON.stringify({ hostId: "h_lab", apiVersion: 1 }), { status: 200 }),
+			) as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+			webSocketImpl: ImmediateCloseSocket as unknown as typeof import("ws").WebSocket,
+		});
+		const sender = mockSender();
+		const { connectionId } = await bridge.connect(sender);
+		await vi.waitFor(() => {
+			// Close is buffered on the tombstone; nothing is delivered yet.
+			expect(sender.events).toEqual([]);
+		});
+		// Allow the close microtask to land on the tombstone.
+		await Promise.resolve();
+		bridge.subscribe(sender, connectionId);
+		expect(sender.events.map((e) => (e.event as { type: string }).type)).toEqual(["close"]);
+		const close = sender.events[0]?.event as { code?: number; reason?: string };
+		expect(close.code).toBe(1006);
+		expect(close.reason).toBe("auth failed");
+	});
+
 	it("fails closed on host mismatch without opening a socket", async () => {
 		const fetchImpl = vi.fn(async () =>
 			new Response(JSON.stringify({ hostId: "h_other", apiVersion: 1 }), {

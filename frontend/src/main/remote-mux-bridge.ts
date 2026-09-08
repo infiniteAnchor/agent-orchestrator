@@ -108,7 +108,7 @@ export function createRemoteMuxBridge(
 		if (conn.sender.isDestroyed()) return;
 		if (!conn.subscribed) {
 			if (conn.pendingEvents.length >= MAX_PENDING_MUX_EVENTS) {
-				teardown(conn.connectionId, conn, false);
+				discardConnection(conn.connectionId, conn);
 				return;
 			}
 			conn.pendingEvents.push(event);
@@ -122,8 +122,8 @@ export function createRemoteMuxBridge(
 		deliverEvent(conn, event);
 	}
 
-	function teardown(connectionId: string, conn: ActiveMuxConnection, emitClose = true): void {
-		if (conn.closed) return;
+	/** Drop a connection immediately without replaying buffered events. */
+	function discardConnection(connectionId: string, conn: ActiveMuxConnection): void {
 		conn.closed = true;
 		connections.delete(connectionId);
 		pendingConnects.delete(connectionId);
@@ -133,9 +133,44 @@ export function createRemoteMuxBridge(
 		} catch {
 			// already closing
 		}
-		if (emitClose && !conn.sender.isDestroyed()) {
-			deliverEvent(conn, { type: "close" });
+	}
+
+	/**
+	 * Mark the socket closed. If the renderer has not subscribed yet, keep a
+	 * tombstone so buffered terminal events (especially close) can still be
+	 * replayed when subscribe arrives.
+	 */
+	function markClosed(
+		connectionId: string,
+		conn: ActiveMuxConnection,
+		closeEvent: Extract<RemoteMuxClientEvent, { type: "close" }> = { type: "close" },
+	): void {
+		if (conn.closed) return;
+		conn.closed = true;
+		pendingConnects.delete(connectionId);
+		try {
+			conn.socket.close();
+		} catch {
+			// already closing
 		}
+		deliverEvent(conn, closeEvent);
+		if (conn.subscribed) {
+			connections.delete(connectionId);
+			idsBySender.get(conn.sender.id)?.delete(connectionId);
+		}
+	}
+
+	function teardown(connectionId: string, conn: ActiveMuxConnection, emitClose = true): void {
+		if (conn.closed && !connections.has(connectionId)) return;
+		if (emitClose) {
+			markClosed(connectionId, conn);
+			if (!conn.subscribed) {
+				// Explicit local close: no need to wait for subscribe.
+				discardConnection(connectionId, conn);
+			}
+			return;
+		}
+		discardConnection(connectionId, conn);
 	}
 
 	function cancelPendingConnect(connectionId: string): void {
@@ -239,11 +274,7 @@ export function createRemoteMuxBridge(
 				emitEvent(conn, { type: "message", data: text });
 			});
 			socket.on("close", (code, reason) => {
-				if (conn.closed) return;
-				conn.closed = true;
-				connections.delete(connectionId);
-				idsBySender.get(sender.id)?.delete(connectionId);
-				deliverEvent(conn, {
+				markClosed(connectionId, conn, {
 					type: "close",
 					code,
 					reason: reason.toString("utf8"),
@@ -266,13 +297,18 @@ export function createRemoteMuxBridge(
 	function subscribe(sender: Pick<RemoteMuxSender, "id">, connectionId: unknown): void {
 		if (typeof connectionId !== "string") return;
 		const conn = connections.get(connectionId);
-		if (conn === undefined || conn.sender.id !== sender.id || conn.closed) return;
+		if (conn === undefined || conn.sender.id !== sender.id) return;
 		if (conn.subscribed) return;
 		conn.subscribed = true;
 		const queued = conn.pendingEvents.splice(0);
 		for (const event of queued) {
-			if (conn.closed || conn.sender.isDestroyed()) return;
+			if (conn.sender.isDestroyed()) return;
 			conn.sender.send(conn.channel, event);
+		}
+		// Closed tombstones are retained only until subscribe replays terminal state.
+		if (conn.closed) {
+			connections.delete(connectionId);
+			idsBySender.get(sender.id)?.delete(connectionId);
 		}
 	}
 

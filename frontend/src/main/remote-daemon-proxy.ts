@@ -322,16 +322,31 @@ export function createRemoteDaemonProxy(
 		}
 	}
 
-	async function authorize(): Promise<
+	async function authorize(signal?: AbortSignal): Promise<
 		| { ok: true; profile: RemoteServerProfile }
 		| { ok: false; response: RemoteDaemonProxyResponse }
 	> {
+		if (signal?.aborted) {
+			return {
+				ok: false,
+				response: {
+					status: 499,
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						error: "cancelled",
+						code: "CANCELLED",
+						message: "Remote daemon authorization cancelled.",
+					}),
+				},
+			};
+		}
 		const profile = await getActiveProfile();
 		if (profile === null) return { ok: false, response: noRemoteProfileResponse() };
 		const gate = await verifyIdentity({
 			baseUrl: profile.baseUrl,
 			pinnedHostId: profile.pinnedHostId,
 			fetchImpl: doFetch,
+			signal,
 		});
 		if (!gate.ok) return { ok: false, response: identityFailureResponse(gate) };
 		return { ok: true, profile };
@@ -403,8 +418,8 @@ export function createRemoteDaemonProxy(
 		};
 
 		try {
-			const auth = await authorize();
-			if (pending.cancelled || sender.isDestroyed()) {
+			const auth = await authorize(controller.signal);
+			if (pending.cancelled || sender.isDestroyed() || controller.signal.aborted) {
 				throw streamError(499, "Remote daemon stream open cancelled.");
 			}
 			if (!auth.ok) {
