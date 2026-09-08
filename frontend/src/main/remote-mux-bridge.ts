@@ -31,7 +31,7 @@ export const REMOTE_MUX_FRAME_LIMIT = 1 << 20;
 export const MAX_MUX_CONNECTIONS_PER_WEBCONTENTS = 4;
 
 /** Bound deferred events until the renderer subscribes to the IPC channel. */
-const MAX_PENDING_MUX_EVENTS = 64;
+export const MAX_PENDING_MUX_EVENTS = 64;
 
 export type RemoteMuxClientEvent =
 	| { type: "open" }
@@ -107,11 +107,31 @@ export function createRemoteMuxBridge(
 	function deliverEvent(conn: ActiveMuxConnection, event: RemoteMuxClientEvent): void {
 		if (conn.sender.isDestroyed()) return;
 		if (!conn.subscribed) {
-			if (conn.pendingEvents.length >= MAX_PENDING_MUX_EVENTS) {
-				discardConnection(conn.connectionId, conn);
+			if (conn.pendingEvents.length >= MAX_PENDING_MUX_EVENTS && event.type !== "close") {
+				// Drop buffered payloads but keep a terminal close tombstone so
+				// subscribe can still move the renderer out of CONNECTING.
+				conn.pendingEvents.length = 0;
+				conn.pendingEvents.push({
+					type: "close",
+					reason: "Mux event buffer overflow before subscribe.",
+				});
+				if (!conn.closed) {
+					conn.closed = true;
+					pendingConnects.delete(conn.connectionId);
+					try {
+						conn.socket.close();
+					} catch {
+						// already closing
+					}
+				}
 				return;
 			}
-			conn.pendingEvents.push(event);
+			if (event.type === "close") {
+				// Prefer the real close over any overflow placeholder / payloads.
+				conn.pendingEvents = [event];
+			} else {
+				conn.pendingEvents.push(event);
+			}
 			return;
 		}
 		conn.sender.send(conn.channel, event);
