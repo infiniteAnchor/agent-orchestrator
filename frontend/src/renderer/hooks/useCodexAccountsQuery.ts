@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { components } from "../../api/schema";
 import { apiClient, apiErrorMessage } from "../lib/api-client";
+import { isRemoteDaemon } from "../lib/daemon-connection";
 import { codexAccountsQueryKey, mergeCodexAccounts, writeCodexAccounts } from "./codex-accounts-state";
 
 export { codexAccountsQueryKey } from "./codex-accounts-state";
@@ -97,12 +98,15 @@ export const codexAccountsQueryOptions = {
 	retry: 1,
 	staleTime: Number.POSITIVE_INFINITY,
 };
-export function useCodexAccountsQuery(enabled = true) { return useQuery({ ...codexAccountsQueryOptions, enabled }); }
+export function useCodexAccountsQuery(enabled = true) {
+	// Codex account management is loopback-only; a remote desktop must not query it.
+	return useQuery({ ...codexAccountsQueryOptions, enabled: enabled && !isRemoteDaemon() });
+}
 
 export function useEnsureCodexAccounts(enabled = true): void {
 	const queryClient = useQueryClient();
 	useEffect(() => {
-		if (!enabled) return;
+		if (!enabled || isRemoteDaemon()) return;
 		let active = true;
 		const ensure = () => {
 			const cached = queryClient.getQueryData(codexAccountsQueryKey);

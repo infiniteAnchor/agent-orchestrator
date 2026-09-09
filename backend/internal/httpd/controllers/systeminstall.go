@@ -10,6 +10,7 @@ import (
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apispec"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/remotewire"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systeminstall"
 )
 
@@ -50,7 +51,7 @@ func (c *SystemInstallController) agentPlans(w http.ResponseWriter, r *http.Requ
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, AgentInstallerCatalogResponse{Agents: plans})
+	envelope.WriteJSON(w, http.StatusOK, AgentInstallerCatalogResponse{Agents: agentPlansForWire(r.Context(), plans)})
 }
 
 func (c *SystemInstallController) startAgent(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +84,7 @@ func (c *SystemInstallController) startAgent(w http.ResponseWriter, r *http.Requ
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusAccepted, job)
+	envelope.WriteJSON(w, http.StatusAccepted, installJobForWire(r.Context(), job))
 }
 
 func (c *SystemInstallController) agentJobs(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +97,7 @@ func (c *SystemInstallController) agentJobs(w http.ResponseWriter, r *http.Reque
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, AgentInstallJobsResponse{Jobs: jobs})
+	envelope.WriteJSON(w, http.StatusOK, AgentInstallJobsResponse{Jobs: installJobsForWire(r.Context(), jobs)})
 }
 
 func (c *SystemInstallController) verifyAgent(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +117,60 @@ func (c *SystemInstallController) verifyAgent(w http.ResponseWriter, r *http.Req
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusAccepted, job)
+	envelope.WriteJSON(w, http.StatusAccepted, installJobForWire(r.Context(), job))
+}
+
+// agentPlansForWire removes host-local install destinations and redacts
+// absolute paths embedded in the plan's diagnostic copy for LAN requests.
+func agentPlansForWire(ctx context.Context, plans []systeminstall.AgentPlan) []systeminstall.AgentPlan {
+	if len(plans) == 0 {
+		return plans
+	}
+	out := make([]systeminstall.AgentPlan, len(plans))
+	for i, plan := range plans {
+		out[i] = agentPlanForWire(ctx, plan)
+	}
+	return out
+}
+
+func agentPlanForWire(ctx context.Context, plan systeminstall.AgentPlan) systeminstall.AgentPlan {
+	plan.ExpectedDestination = remotewire.Path(ctx, plan.ExpectedDestination)
+	plan.Command = remotewire.Text(ctx, plan.Command)
+	plan.Reason = remotewire.Text(ctx, plan.Reason)
+	if len(plan.Methods) > 0 {
+		methods := make([]systeminstall.AgentInstallMethod, len(plan.Methods))
+		for i, method := range plan.Methods {
+			method.ExpectedDestination = remotewire.Path(ctx, method.ExpectedDestination)
+			method.Command = remotewire.Text(ctx, method.Command)
+			method.Reason = remotewire.Text(ctx, method.Reason)
+			method.ReinstallCommand = remotewire.Text(ctx, method.ReinstallCommand)
+			method.ReinstallReason = remotewire.Text(ctx, method.ReinstallReason)
+			methods[i] = method
+		}
+		plan.Methods = methods
+	}
+	return plan
+}
+
+func installJobsForWire(ctx context.Context, jobs []systeminstall.Job) []systeminstall.Job {
+	if len(jobs) == 0 {
+		return jobs
+	}
+	out := make([]systeminstall.Job, len(jobs))
+	for i, job := range jobs {
+		out[i] = installJobForWire(ctx, job)
+	}
+	return out
+}
+
+// installJobForWire removes the resolved destination and redacts absolute paths
+// from installer output and error text for LAN requests. The job's status,
+// method, and timestamps stay intact so a remote client can still follow it.
+func installJobForWire(ctx context.Context, job systeminstall.Job) systeminstall.Job {
+	job.ExpectedDestination = remotewire.Path(ctx, job.ExpectedDestination)
+	job.Output = remotewire.Text(ctx, job.Output)
+	job.Error = remotewire.Text(ctx, job.Error)
+	return job
 }
 
 func writeAgentInstallError(w http.ResponseWriter, r *http.Request, err error) bool {
@@ -149,7 +203,7 @@ func (c *SystemInstallController) agentStatus(w http.ResponseWriter, r *http.Req
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, job)
+	envelope.WriteJSON(w, http.StatusOK, installJobForWire(r.Context(), job))
 }
 
 func (c *SystemInstallController) start(w http.ResponseWriter, r *http.Request) {

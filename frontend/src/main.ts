@@ -108,6 +108,7 @@ import { installCloudCpProxy } from "./main/cloud-cp-proxy";
 import { installRemoteDaemonProxy } from "./main/remote-daemon-proxy";
 import { installRemoteConnectionIPC } from "./main/remote-connection-ipc";
 import { installRemoteMuxBridge } from "./main/remote-mux-bridge";
+import { getActiveRemoteProfile } from "./main/remote-connection-store";
 import { DEFAULT_POSTHOG_HOST, DEFAULT_POSTHOG_PROJECT_KEY } from "./shared/posthog-config";
 import { DEFAULT_SENTRY_DSN } from "./shared/sentry-config";
 import { buildTelemetryBootstrap, rendererTelemetryEnabled } from "./shared/telemetry";
@@ -457,7 +458,9 @@ function setDaemonStatus(nextStatus: DaemonStatus): void {
 	if (nextStatus.state !== "ready") disposeBrowserRuntimeLink();
 	daemonStatus = nextStatus;
 	getShellWebContents()?.send("daemon:status", daemonStatus);
-	if (nextStatus.state === "ready" && browserViewHost) {
+	// The browser runtime link is a loopback-only surface; a remote desktop has
+	// no local daemon to link to and /api/v1/browser is LAN-blocked.
+	if (nextStatus.state === "ready" && !nextStatus.remote && browserViewHost) {
 		establishBrowserRuntimeLink();
 	}
 }
@@ -708,7 +711,7 @@ async function createWindowInternal(): Promise<void> {
 			return result.response === 1;
 		},
 	});
-	if (daemonStatus.state === "ready") establishBrowserRuntimeLink();
+	if (daemonStatus.state === "ready" && !daemonStatus.remote) establishBrowserRuntimeLink();
 
 	void shellWebContents.loadURL(rendererUrl());
 
@@ -1266,7 +1269,42 @@ async function gracefullyReplaceDaemonForBrowser(status: DaemonStatus): Promise<
 	throw new Error("the previous daemon did not stop within 8 seconds");
 }
 
+/**
+ * Status to report while an enrolled remote server is selected. The local daemon
+ * is not the connection target, so its lifecycle must not gate the renderer.
+ */
+async function remoteDaemonStatus(): Promise<DaemonStatus | null> {
+	const profile = await getActiveRemoteProfile(desktopDataDir);
+	if (profile === null) return null;
+	return {
+		state: "ready",
+		remote: { profileId: profile.id, label: profile.label, baseUrl: profile.baseUrl },
+	};
+}
+
+/**
+ * Re-read the enrolled connection and switch the renderer to it. Remote mode
+ * reports the synthetic ready status; local mode resumes the normal daemon
+ * discovery/start path.
+ */
+async function applyConnectionModeChange(): Promise<DaemonStatus> {
+	const remote = await remoteDaemonStatus();
+	if (remote !== null) {
+		setDaemonStatus(remote);
+		return daemonStatus;
+	}
+	// Leaving remote mode: drop the synthetic status so the renderer stops
+	// pointing at the old server before the local daemon is up.
+	if (daemonStatus.remote !== undefined) setDaemonStatus({ state: "stopped" });
+	return startDaemon();
+}
+
 async function refreshDaemonStatus(): Promise<DaemonStatus> {
+	const remote = await remoteDaemonStatus();
+	if (remote !== null) {
+		if (daemonStatus.remote?.profileId !== remote.remote?.profileId) setDaemonStatus(remote);
+		return daemonStatus;
+	}
 	if (daemonProcess) {
 		return daemonStatus;
 	}
@@ -1299,6 +1337,13 @@ async function refreshDaemonStatus(): Promise<DaemonStatus> {
 }
 
 async function startDaemon(): Promise<DaemonStatus> {
+	// A remote connection replaces the local daemon as the renderer's target;
+	// starting one here would split the app across two servers.
+	const remote = await remoteDaemonStatus();
+	if (remote !== null) {
+		setDaemonStatus(remote);
+		return daemonStatus;
+	}
 	if (daemonStartPromise) {
 		return daemonStartPromise;
 	}
@@ -2319,7 +2364,9 @@ installCloudCpProxy(cloudDataDir);
 // Uses the enrolled profile under ~/.ao; identity is checked before the LAN
 // bearer is attached, and the bearer never reaches the renderer.
 installRemoteDaemonProxy(() => desktopDataDir);
-installRemoteConnectionIPC(() => desktopDataDir);
+installRemoteConnectionIPC(() => desktopDataDir, () => {
+	void applyConnectionModeChange();
+});
 installRemoteMuxBridge(() => desktopDataDir);
 
 function focusCloudWindow(): void {
@@ -2544,7 +2591,7 @@ app.whenReady().then(async () => {
 		});
 	}
 	await createWindow();
-	void startDaemon();
+	void applyConnectionModeChange();
 	initAutoUpdates();
 
 	// Windows/Linux: on first launch, the deep-link URL may arrive as a

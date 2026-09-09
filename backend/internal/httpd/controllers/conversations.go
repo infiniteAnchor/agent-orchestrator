@@ -17,6 +17,8 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apispec"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/remotewire"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 	chatsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/chat"
 )
@@ -524,7 +526,7 @@ func (c *ConversationsController) snapshot(w http.ResponseWriter, r *http.Reques
 		writeConversationError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, conversationSnapshotResponse(snapshot))
+	envelope.WriteJSON(w, http.StatusOK, conversationSnapshotResponse(r.Context(), snapshot))
 }
 
 func optionalPositiveInt64(raw string) (int64, error) {
@@ -851,7 +853,7 @@ func writeConversationError(w http.ResponseWriter, r *http.Request, err error) {
 
 // conversationSnapshotResponse maps the service snapshot onto the wire shape.
 // Items arrive already ordered by sequence, so nothing is re-sorted here.
-func conversationSnapshotResponse(s chatsvc.Snapshot) ConversationSnapshotResponse {
+func conversationSnapshotResponse(ctx context.Context, s chatsvc.Snapshot) ConversationSnapshotResponse {
 	out := ConversationSnapshotResponse{
 		ConversationID:                   s.Conversation.ID,
 		ActiveBranchID:                   s.Conversation.ActiveBranchID,
@@ -932,7 +934,7 @@ func conversationSnapshotResponse(s chatsvc.Snapshot) ConversationSnapshotRespon
 			ActivityKind:   string(activity.Kind),
 			Status:         string(activity.Status),
 			Summary:        activity.Summary,
-			Detail:         activityDetailPayload(activity),
+			Detail:         activityDetailPayload(ctx, activity),
 			RequestID:      activity.RequestID,
 			ProviderItemID: activity.ProviderItemID,
 			CreatedAt:      activity.CreatedAt.UTC().Format(time.RFC3339),
@@ -1127,7 +1129,7 @@ func mcpServersPayload(servers []domain.ConversationMCPServer) []ConversationMCP
 // tick-1..tick-8 lost tick-1 from the delta stream and from the aggregate alike --
 // so outputMayBePartial stays set either way. `outputSource` exists so the UI can
 // explain WHY it is partial instead of hedging identically about both.
-func activityDetailPayload(activity domain.ConversationActivity) map[string]any {
+func activityDetailPayload(ctx context.Context, activity domain.ConversationActivity) map[string]any {
 	detail := decodeDetail(activity.Detail)
 	if activity.CommandOutput != "" {
 		if detail == nil {
@@ -1151,6 +1153,14 @@ func activityDetailPayload(activity domain.ConversationActivity) map[string]any 
 		if activity.StreamedTextTruncated {
 			detail[truncatedKey] = true
 		}
+	}
+	if reqctx.IsLAN(ctx) {
+		// cwd is the absolute worktree path the provider ran the command in; a
+		// remote client must not learn this host's layout. Other detail strings
+		// (command output, raw commands) are redacted rather than dropped so the
+		// remote timeline still shows what happened.
+		delete(detail, "cwd")
+		detail = remotewire.Map(ctx, detail)
 	}
 	return detail
 }

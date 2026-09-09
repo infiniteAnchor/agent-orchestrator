@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../lib/api-client";
 import { aoBridge } from "../lib/bridge";
+import { isRemoteDaemon } from "../lib/daemon-connection";
 import type { MigrationState } from "../../main/app-state";
 
 export const migrationOfferQueryKey = ["migration-offer"] as const;
@@ -31,7 +32,9 @@ export function useMigrationOffer() {
 	return useQuery({
 		queryKey: migrationOfferQueryKey,
 		queryFn: fetchMigrationOffer,
-		enabled: !usePreviewData,
+		// Legacy migration reads the daemon host's filesystem and its routes are
+		// LAN-blocked, so a remote desktop never offers it.
+		enabled: !usePreviewData && !isRemoteDaemon(),
 		retry: 1,
 		throwOnError: false,
 	});

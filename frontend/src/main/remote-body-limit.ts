@@ -19,8 +19,8 @@ export class RemoteBodyLimitError extends Error {
 	}
 }
 
-/** Read a fetch Response body with a hard UTF-8/byte ceiling. */
-export async function readResponseBodyLimited(response: Response, limit: number): Promise<string> {
+/** Read a fetch Response body with a hard byte ceiling. */
+export async function readResponseBodyLimitedBytes(response: Response, limit: number): Promise<Uint8Array> {
 	const contentLength = response.headers.get("content-length");
 	if (contentLength !== null) {
 		const declared = Number(contentLength);
@@ -29,7 +29,7 @@ export async function readResponseBodyLimited(response: Response, limit: number)
 		}
 	}
 	if (response.body === null) {
-		return "";
+		return new Uint8Array(0);
 	}
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
@@ -49,7 +49,19 @@ export async function readResponseBodyLimited(response: Response, limit: number)
 	} finally {
 		reader.releaseLock();
 	}
-	if (chunks.length === 0) return "";
-	if (chunks.length === 1) return Buffer.from(chunks[0]!).toString("utf8");
-	return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+	if (chunks.length === 0) return new Uint8Array(0);
+	if (chunks.length === 1) return chunks[0]!;
+	const merged = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return merged;
+}
+
+/** Read a fetch Response body as UTF-8 text with a hard byte ceiling. */
+export async function readResponseBodyLimited(response: Response, limit: number): Promise<string> {
+	const bytes = await readResponseBodyLimitedBytes(response, limit);
+	return bytes.byteLength === 0 ? "" : Buffer.from(bytes).toString("utf8");
 }

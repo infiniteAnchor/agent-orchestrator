@@ -9,6 +9,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apierr"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/remotewire"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	"github.com/aoagents/agent-orchestrator/backend/internal/observe/ownership"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 )
@@ -68,6 +70,12 @@ func WriteAPIError(w http.ResponseWriter, r *http.Request, status int, kind, cod
 }
 
 func writeAPIError(w http.ResponseWriter, r *http.Request, status int, kind, code, message string, details map[string]any, reportingOwner ownership.Owner) {
+	// A remote client must not learn this host's filesystem layout from an error.
+	// Loopback callers keep the raw message and details unchanged.
+	if reqctx.IsLAN(r.Context()) {
+		message = remotewire.Text(r.Context(), message)
+		details = remotewire.Map(r.Context(), details)
+	}
 	WriteJSON(w, status, APIError{
 		Error:          kind,
 		Code:           code,

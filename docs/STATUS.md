@@ -114,8 +114,26 @@ surface (`npm run sqlc`, `npm run api`).
   Electron supervisor watchdog; `ao lan` enables/rotates the LAN listener over
   loopback with distinct host-id and password output and `lanOnly=true` so
   Cloudflare remote access is not started; operator runbook and systemd unit in
-  [`docs/headless-deploy.md`](headless-deploy.md). Remote desktop enrollment
-  (Phase 2) is not shipped.
+  [`docs/headless-deploy.md`](headless-deploy.md).
+- Remote-safe LAN wire contract: LAN responses omit host-absolute paths from
+  probes, projects, shell terminals, system requirements, agent installer
+  plans/jobs, model catalogs, conversation activity details, and every API
+  error message/details value (`internal/httpd/remotewire`). The legacy import
+  routes are LAN-blocked. Loopback responses are unchanged. See
+  [`docs/headless-server-control-plane.md`](headless-server-control-plane.md)
+  (Phase 2).
+- Remote desktop mode: Settings → Remote servers enrolls a headless AO server
+  (label, address, host id, connection password) and switches between it and
+  the local daemon. Electron main owns the enrolled endpoint and bearer, pins
+  the host id and verifies `GET /api/v1/identity` before any authenticated
+  call, proxies bounded HTTP/SSE over IPC, and bridges `/mux` from a
+  main-process WebSocket. The renderer routes the typed API client, event
+  streams (with durable `after` cursor resume), notifications, workspace file
+  watches, and terminals through that bridge; loopback-only surfaces
+  (migration, editor handoff, Codex accounts, Connect Mobile, harness installs)
+  are hidden while remote. See
+  [`docs/headless-server-control-plane.md`](headless-server-control-plane.md)
+  (Phase 2).
 
 ### Frontend (Electron + React)
 

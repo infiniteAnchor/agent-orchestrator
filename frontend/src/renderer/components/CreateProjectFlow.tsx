@@ -26,6 +26,7 @@ import { cloudProjectsQueryKey } from "../hooks/useWorkspaceQuery";
 import { apiClient, apiErrorMessage } from "../lib/api-client";
 import { aoBridge } from "../lib/bridge";
 import { useCloudSession } from "../lib/cloud-session";
+import { isRemoteDaemon } from "../lib/daemon-connection";
 import { cn } from "../lib/utils";
 import type { ProjectKind } from "../types/workspace";
 import { CreateProjectAgentSheet, type CreateProjectAgentSelection } from "./CreateProjectAgentSheet";
@@ -163,6 +164,12 @@ export function CreateProjectFlow({
 	};
 
 	const chooseDirectory = async (kind: ProjectKind, presetPath?: string) => {
+		if (isRemoteDaemon()) {
+			// The folder picker runs on this desktop, but import validation and git
+			// preparation run on the daemon host, whose import routes are LAN-blocked.
+			setError(t("createProject.remoteFolderUnavailable"));
+			return;
+		}
 		setError(null);
 		setValidationScan(null);
 		setProjectValidation(null);

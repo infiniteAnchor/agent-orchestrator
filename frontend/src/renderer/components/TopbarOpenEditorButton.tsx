@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OpenTarget, OpenTargetId } from "../../shared/editor-handoff";
 import { useEditorHandoffState, useOpenSessionTarget } from "../hooks/useEditorHandoff";
+import { useIsRemoteDaemon } from "../hooks/useRemoteDaemon";
 import { TopbarActionError, TopbarButton } from "./TopbarButton";
 import {
 	DropdownMenu,
@@ -77,6 +78,11 @@ export function TopbarOpenEditorButton({
 	const open = useOpenSessionTarget();
 	const state = stateQuery.data;
 	const [menuOpen, setMenuOpen] = useState(false);
+	// Opening an editor/file manager resolves a path on the daemon host through
+	// the LAN-blocked /api/v1/desktop route; there is no local workspace to open
+	// when the desktop is driving a remote server.
+	const remote = useIsRemoteDaemon();
+	if (remote) return null;
 	const targets = state?.targets ?? [];
 	const editors = targets.filter((target) => target.kind === "editor");
 	const preferred = editors.find((target) => target.id === state?.preferredEditorId);

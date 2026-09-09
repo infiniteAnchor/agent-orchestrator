@@ -70,6 +70,9 @@ func TestLANManagerBlocksLoopbackOnlyControlRoutes(t *testing.T) {
 		"/api/v1/mobile/devices",
 		"/api/v1/mobile/devices/i1",
 		"/api/v1/dev/import-projects",
+		"/api/v1/import",
+		"/api/v1/imports/validate",
+		"/api/v1/imports/prepare-git",
 		"/api/v1/browser/status",
 		"/api/v1/desktop/sessions/ao-1/workspace",
 		"/api/v1/system/install/tmux",
@@ -125,6 +128,29 @@ func TestLANManagerBlocksLoopbackOnlyControlRoutes(t *testing.T) {
 		t.Fatalf("/api/v1/agents: got 404, should not be blocked by the control-route filter")
 	}
 
+}
+
+// TestLANControlBlockImportPrefixIsSegmentBounded pins that the legacy-import
+// block covers the whole import surface without swallowing unrelated routes
+// that merely share a prefix.
+func TestLANControlBlockImportPrefixIsSegmentBounded(t *testing.T) {
+	blocked := []string{
+		"/api/v1/import",
+		"/api/v1/imports",
+		"/api/v1/imports/validate",
+		"/api/v1/imports/prepare-git",
+	}
+	for _, path := range blocked {
+		if !IsLANControlBlockedPathForTest(path) {
+			t.Fatalf("%s: want blocked on LAN", path)
+		}
+	}
+	allowed := []string{"/api/v1/importexport", "/api/v1/importers", "/api/v1/sessions"}
+	for _, path := range allowed {
+		if IsLANControlBlockedPathForTest(path) {
+			t.Fatalf("%s: must not be blocked", path)
+		}
+	}
 }
 
 func TestLANManagerStartStopIdempotent(t *testing.T) {

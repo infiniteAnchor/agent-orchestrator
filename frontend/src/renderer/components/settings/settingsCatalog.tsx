@@ -1,4 +1,4 @@
-import { BadgeCheck, Bot, CircleHelp, Cloud, Globe2, Keyboard, RefreshCw, Settings2, Smartphone, type LucideIcon } from "lucide-react";
+import { BadgeCheck, Bot, CircleHelp, Cloud, Globe2, Keyboard, RefreshCw, Server, Settings2, Smartphone, type LucideIcon } from "lucide-react";
 import { lazy, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import type { GlobalSettingsSection } from "../../stores/ui-store";
@@ -11,6 +11,7 @@ import { GeneralSettingsSection } from "./GeneralSettingsSection";
 import { HarnessSettingsSection } from "./HarnessSettingsSection";
 import { KeyboardShortcutsContent } from "./KeyboardShortcutsContent";
 import { MobileDevicesSection } from "./MobileDevicesSection";
+import { RemoteServersSection } from "./RemoteServersSection";
 import { ReportProblemContent } from "./ReportProblemContent";
 import { SettingsSection } from "./SettingsSection";
 
@@ -21,6 +22,8 @@ const UpdatesSection = lazy(async () => {
 
 type CatalogContext = {
 	cloudEnabled: boolean;
+	/** True when this desktop drives an enrolled remote server (loopback-only sections hide). */
+	remote: boolean;
 };
 
 export type SettingsCatalogItem = {
@@ -52,6 +55,9 @@ const globalSettingsCatalog: SettingsCatalogItem[] = [
 		id: "agents",
 		icon: BadgeCheck,
 		label: (t) => t("settings.agents"),
+		// Codex account management is loopback-only (personal credentials on the
+		// daemon host), so a remote desktop must not offer it.
+		visible: ({ remote }) => !remote,
 		render: (_t, titleHidden) => <CodexAccountsSection titleHidden={titleHidden} />,
 	},
 	{
@@ -75,9 +81,18 @@ const globalSettingsCatalog: SettingsCatalogItem[] = [
 		render: (_t, titleHidden) => <CloudCredentialsSection titleHidden={titleHidden} />,
 	},
 	{
+		id: "remote",
+		icon: Server,
+		label: (t) => t("settings.remote"),
+		render: (_t, titleHidden) => <RemoteServersSection titleHidden={titleHidden} />,
+	},
+	{
 		id: "mobile",
 		icon: Smartphone,
 		label: (t) => t("settings.mobile"),
+		// Connect Mobile controls the local daemon's LAN listener, which does not
+		// exist for a desktop that is itself connected remotely.
+		visible: ({ remote }) => !remote,
 		render: (t, titleHidden) => (
 			<SettingsSection titleHidden={titleHidden} title={t("settings.mobile")}>
 				<div className="rounded-md bg-[var(--color-bg-settings-row)] pb-4 pt-0">

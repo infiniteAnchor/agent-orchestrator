@@ -10,6 +10,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apispec"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/remotewire"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 	agentsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/agent"
 )
@@ -76,6 +77,14 @@ func (c *AgentsController) models(w http.ResponseWriter, r *http.Request) {
 	c.writeModels(w, r, false, false)
 }
 
+// modelCatalogForWire redacts host-absolute paths from the discovery warning.
+// The warning is the only free-text field the catalog carries; a failed binary
+// probe reports the resolved executable path in its error.
+func modelCatalogForWire(ctx context.Context, catalog ports.AgentModelCatalog) ports.AgentModelCatalog {
+	catalog.Warning = remotewire.Text(ctx, catalog.Warning)
+	return catalog
+}
+
 func (c *AgentsController) refreshModels(w http.ResponseWriter, r *http.Request) {
 	c.writeModels(w, r, true, r.URL.Query().Get("revalidate") == "true")
 }
@@ -106,6 +115,7 @@ func (c *AgentsController) writeModels(w http.ResponseWriter, r *http.Request, r
 		envelope.WriteError(w, r, err)
 		return
 	}
+	catalog = modelCatalogForWire(r.Context(), catalog)
 	envelope.WriteJSON(w, http.StatusOK, catalog)
 }
 

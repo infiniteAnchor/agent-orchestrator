@@ -23,6 +23,7 @@ import { type GlobalSettingsSection, type SettingsModal, useUiStore } from "../s
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { globalSettingsItem, visibleGlobalSettings } from "./settings/settingsCatalog";
+import { useIsRemoteDaemon } from "../hooks/useRemoteDaemon";
 
 function initialProjectSaveState(): ProjectSettingsSaveState {
 	return { phase: "idle" };
@@ -34,6 +35,7 @@ export function SettingsDialog() {
 	const closeSettings = useUiStore((state) => state.closeSettings);
 	// Reads the daemon settings the dialog tree already queries; no extra fetch.
 	const { cloudEnabled } = useCloudGate();
+	const remote = useIsRemoteDaemon();
 
 	// Keep the last non-null settings so the content stays rendered during the
 	// exit animation (when settingsModal is already null but the dialog hasn't
@@ -45,7 +47,7 @@ export function SettingsDialog() {
 	if (settingsModal !== null) lastSettingsRef.current = settingsModal;
 	const displaySettings = lastSettingsRef.current;
 
-	const globalSections = visibleGlobalSettings({ cloudEnabled });
+	const globalSections = visibleGlobalSettings({ cloudEnabled, remote });
 
 	const projectSections: Array<{ id: ProjectSettingsSection; label: string; icon: LucideIcon }> = [
 		{ id: "general", label: t("settings.project.identity"), icon: MonitorCog },
@@ -61,7 +63,7 @@ export function SettingsDialog() {
 
 	const activeLabel = isProjectSettings
 		? (projectSections.find((s) => s.id === activeProjectSection)?.label ?? t("settings.project.identity"))
-		: globalSettingsItem(activeSection, { cloudEnabled }).label(t);
+		: globalSettingsItem(activeSection, { cloudEnabled, remote }).label(t);
 
 	const closeSettingsDialog = () => {
 		if (isProjectSettings && (projectSaveState.phase === "pending" || projectSaveState.phase === "saving")) return;
@@ -70,13 +72,13 @@ export function SettingsDialog() {
 
 	useEffect(() => {
 		if (settingsModal?.scope === "global") {
-			setActiveSection(globalSettingsItem(settingsModal.section ?? "general", { cloudEnabled }).id);
+			setActiveSection(globalSettingsItem(settingsModal.section ?? "general", { cloudEnabled, remote }).id);
 		}
 		if (settingsModal?.scope === "project") {
 			setActiveProjectSection("general");
 			setProjectSaveState(initialProjectSaveState());
 		}
-	}, [cloudEnabled, settingsModal]);
+	}, [cloudEnabled, remote, settingsModal]);
 
 	return (
 		<Dialog open={settingsModal !== null} onOpenChange={(open) => !open && closeSettingsDialog()}>
@@ -177,6 +179,7 @@ export function SettingsDialog() {
 							) : (
 								<GlobalSettingsForm
 									cloudEnabled={cloudEnabled}
+									remote={remote}
 									section={activeSection}
 								/>
 							)}

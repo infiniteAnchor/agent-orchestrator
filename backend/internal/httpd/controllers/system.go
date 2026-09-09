@@ -8,6 +8,7 @@ import (
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apispec"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/remotewire"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/shellterm"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systemcheck"
 )
@@ -55,7 +56,7 @@ func (c *SystemController) githubAuth(w http.ResponseWriter, r *http.Request) {
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, requirement)
+	envelope.WriteJSON(w, http.StatusOK, requirementForWire(r.Context(), requirement))
 }
 
 func (c *SystemController) requirements(w http.ResponseWriter, r *http.Request) {
@@ -68,5 +69,25 @@ func (c *SystemController) requirements(w http.ResponseWriter, r *http.Request) 
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, report)
+	envelope.WriteJSON(w, http.StatusOK, reportForWire(r.Context(), report))
+}
+
+// requirementForWire keeps the requirement name and satisfied state for remote
+// clients but removes the resolved executable path from Detail, which is the
+// only host-local value the probe carries.
+func requirementForWire(ctx context.Context, requirement systemcheck.Requirement) systemcheck.Requirement {
+	requirement.Detail = remotewire.Text(ctx, requirement.Detail)
+	return requirement
+}
+
+func reportForWire(ctx context.Context, report systemcheck.Report) systemcheck.Report {
+	if len(report.Requirements) == 0 {
+		return report
+	}
+	out := report
+	out.Requirements = make([]systemcheck.Requirement, len(report.Requirements))
+	for i, requirement := range report.Requirements {
+		out.Requirements[i] = requirementForWire(ctx, requirement)
+	}
+	return out
 }

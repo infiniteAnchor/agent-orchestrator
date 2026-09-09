@@ -88,6 +88,29 @@ describe("createRemoteDaemonProxy", () => {
 			{ url: "http://100.64.0.1:3011/api/v1/projects", authorization: "Bearer secret12" },
 		]);
 		expect(JSON.parse(result.body)).toEqual({ projects: [] });
+		expect(result.bodyEncoding).toBe("utf8");
+	});
+
+	it("base64-encodes binary response bodies so bytes survive IPC", async () => {
+		const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith("/api/v1/identity")) {
+				return jsonResponse({ hostId: "h_lab", apiVersion: 1 });
+			}
+			return new Response(png, { status: 200, headers: { "content-type": "image/png" } });
+		});
+		const proxy = createRemoteDaemonProxy(() => "/tmp", {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			getActiveProfile: async () => profile,
+		});
+
+		const result = await proxy.request({
+			path: "/api/v1/sessions/ao-1/workspace/file/blob?path=a.png",
+			method: "GET",
+		});
+
+		expect(result.bodyEncoding).toBe("base64");
+		expect(Array.from(Buffer.from(result.body, "base64"))).toEqual(Array.from(png));
 	});
 
 	it("fails closed on host mismatch without sending the bearer", async () => {
@@ -120,6 +143,10 @@ describe("createRemoteDaemonProxy", () => {
 			/not allowed/,
 		);
 		await expect(proxy.request({ path: "/api/v1/mobile/status", method: "GET" })).rejects.toThrow(/not allowed/);
+		await expect(proxy.request({ path: "/api/v1/import", method: "GET" })).rejects.toThrow(/not allowed/);
+		await expect(proxy.request({ path: "/api/v1/imports/validate", method: "POST" })).rejects.toThrow(
+			/not allowed/,
+		);
 		await expect(proxy.request({ path: "/shutdown", method: "POST" })).rejects.toThrow(/not allowed/);
 		expect(fetchImpl).not.toHaveBeenCalled();
 	});

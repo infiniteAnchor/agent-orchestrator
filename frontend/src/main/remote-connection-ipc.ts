@@ -21,7 +21,11 @@ export const REMOTE_CONNECTION_SET_ACTIVE_CHANNEL = "remoteConnection:setActive"
 export const REMOTE_CONNECTION_REMOVE_CHANNEL = "remoteConnection:remove";
 export const REMOTE_CONNECTION_VERIFY_CHANNEL = "remoteConnection:verifyIdentity";
 
-export function installRemoteConnectionIPC(getStateDir: () => string): void {
+export function installRemoteConnectionIPC(
+	getStateDir: () => string,
+	/** Invoked after the stored connection changes so main can re-target status. */
+	onConnectionChanged: () => void = () => undefined,
+): void {
 	ipcMain.handle(
 		REMOTE_CONNECTION_GET_CHANNEL,
 		async (): Promise<PublicRemoteConnectionStore> => readPublicRemoteConnectionStore(getStateDir()),
@@ -51,12 +55,14 @@ export function installRemoteConnectionIPC(getStateDir: () => string): void {
 			if (!gate.ok) {
 				throw new Error(gate.message);
 			}
-			return enrollRemoteServer(getStateDir(), {
+			const store = await enrollRemoteServer(getStateDir(), {
 				label: body.label,
 				baseUrl: body.baseUrl,
 				pinnedHostId: body.pinnedHostId,
 				password: body.password,
 			});
+			onConnectionChanged();
+			return store;
 		},
 	);
 
@@ -68,13 +74,17 @@ export function installRemoteConnectionIPC(getStateDir: () => string): void {
 			}
 			const body = mode as Partial<ConnectionMode>;
 			if (body.kind === "local") {
-				return setActiveConnectionMode(getStateDir(), { kind: "local" });
+				const store = await setActiveConnectionMode(getStateDir(), { kind: "local" });
+				onConnectionChanged();
+				return store;
 			}
 			if (body.kind === "remote" && typeof body.profileId === "string") {
-				return setActiveConnectionMode(getStateDir(), {
+				const store = await setActiveConnectionMode(getStateDir(), {
 					kind: "remote",
 					profileId: body.profileId,
 				});
+				onConnectionChanged();
+				return store;
 			}
 			throw new Error("Active mode must be { kind: 'local' } or { kind: 'remote', profileId }.");
 		},
@@ -86,7 +96,9 @@ export function installRemoteConnectionIPC(getStateDir: () => string): void {
 			if (typeof profileId !== "string" || profileId === "") {
 				throw new Error("profileId must be a non-empty string.");
 			}
-			return removeRemoteServer(getStateDir(), profileId);
+			const store = await removeRemoteServer(getStateDir(), profileId);
+			onConnectionChanged();
+			return store;
 		},
 	);
 

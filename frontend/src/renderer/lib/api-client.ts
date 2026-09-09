@@ -4,6 +4,8 @@ import type { DaemonStatus } from "../../shared/daemon-status";
 import { daemonFailureMessage } from "./daemon-failure";
 import { captureRendererEvent } from "./telemetry";
 import { captureApiErrorToSentry } from "./sentry";
+import { isRemoteDaemon } from "./daemon-connection";
+import { remoteDaemonFetch } from "./remote-daemon-fetch";
 
 function devApiBaseUrl(): string {
 	return typeof window === "undefined" ? "http://127.0.0.1:3001" : window.location.origin;
@@ -250,6 +252,11 @@ async function runtimeFetch(input: Request): Promise<Response> {
 	}
 
 	const send = async (): Promise<Response> => {
+		// Remote mode never fetches from the renderer: main resolves the enrolled
+		// server, runs the pinned host-id gate, and attaches the LAN bearer.
+		if (isRemoteDaemon()) {
+			return remoteDaemonFetch(input);
+		}
 		if (!baseUrl) {
 			return fetch(input);
 		}
