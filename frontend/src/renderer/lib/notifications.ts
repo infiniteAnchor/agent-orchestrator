@@ -2,6 +2,8 @@ import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import type { components } from "../../api/schema";
 import { aoBridge } from "./bridge";
 import { apiClient, apiErrorMessage, getApiBaseUrl, subscribeApiBaseUrl } from "./api-client";
+import { createDaemonEventStream, DAEMON_EVENT_SOURCE_CLOSED, type DaemonEventStream } from "./daemon-event-stream";
+import { isRemoteDaemon } from "./daemon-connection";
 import { computeSseRetryDelayMs } from "./sse-backoff";
 
 export type NotificationDTO = components["schemas"]["NotificationResponse"];
@@ -12,8 +14,6 @@ export type NotificationListStatus = "unread" | "all";
 export const unreadNotificationsQueryKey = ["notifications", "history", "unread"] as const;
 export const recentNotificationsQueryKey = ["notifications", "history", "all"] as const;
 export const NOTIFICATION_PAGE_SIZE = 100;
-
-const EVENTSOURCE_CLOSED = 2;
 
 /**
  * Only these two kinds describe something still waiting on the user.
@@ -288,7 +288,7 @@ export function createNotificationsTransport(
 	return {
 		connect() {
 			let retryTimer: ReturnType<typeof setTimeout> | undefined;
-			let source: EventSource | undefined;
+			let source: DaemonEventStream | undefined;
 			let sourceBaseUrl: string | undefined;
 
 			const invalidateNotifications = () => {
@@ -310,9 +310,9 @@ export function createNotificationsTransport(
 			};
 
 			const connectSource = () => {
-				if (typeof EventSource === "undefined") return;
+				if (!isRemoteDaemon() && typeof EventSource === "undefined") return;
 				const baseUrl = getApiBaseUrl();
-				if (source && sourceBaseUrl === baseUrl && source.readyState !== EVENTSOURCE_CLOSED) return;
+				if (source && sourceBaseUrl === baseUrl && source.readyState !== DAEMON_EVENT_SOURCE_CLOSED) return;
 				// A new daemon port is a fresh target; it should not inherit the
 				// delay the dead port earned.
 				if (sourceBaseUrl && sourceBaseUrl !== baseUrl) retries = 0;
@@ -320,13 +320,13 @@ export function createNotificationsTransport(
 				source = undefined;
 				sourceBaseUrl = baseUrl;
 				try {
-					source = new EventSource(`${baseUrl.replace(/\/+$/, "")}/api/v1/notifications/stream`);
+					source = createDaemonEventStream("/api/v1/notifications/stream");
 					source.onopen = () => {
 						retries = 0;
 						invalidateNotifications();
 					};
 					source.onerror = () => {
-						if (source?.readyState === EVENTSOURCE_CLOSED) scheduleRetry();
+						if (source?.readyState === DAEMON_EVENT_SOURCE_CLOSED) scheduleRetry();
 					};
 					source.addEventListener("notification_created", (event) => {
 						const notification = parseNotificationEvent(event);

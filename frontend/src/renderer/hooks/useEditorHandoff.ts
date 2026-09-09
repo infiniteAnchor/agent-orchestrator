@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isEditorId, type EditorHandoffState, type OpenTargetId } from "../../shared/editor-handoff";
 import { aoBridge } from "../lib/bridge";
+import { isRemoteDaemon } from "../lib/daemon-connection";
 import { captureRendererEvent } from "../lib/telemetry";
 
 export const editorHandoffQueryKey = (sessionId: string) => ["editor-handoff", sessionId] as const;
@@ -20,7 +21,9 @@ export function editorHandoffErrorMessage(error: unknown): string | null {
 export function useEditorHandoffState(sessionId: string) {
 	return useQuery({
 		queryKey: editorHandoffQueryKey(sessionId),
-		enabled: Boolean(sessionId),
+		// The handoff opens a path on the daemon host; there is no local workspace
+		// to open while a remote server is selected.
+		enabled: Boolean(sessionId) && !isRemoteDaemon(),
 		staleTime: 10_000,
 		retry: false,
 		queryFn: () => aoBridge.editorHandoff.getState(sessionId),

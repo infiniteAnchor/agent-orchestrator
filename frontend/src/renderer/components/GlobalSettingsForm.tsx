@@ -7,9 +7,11 @@ export type GlobalSettingsSection = GlobalSettingsPage | "all";
 
 export function GlobalSettingsForm({
 	cloudEnabled = true,
+	remote = false,
 	section = "all",
 }: {
 	cloudEnabled?: boolean;
+	remote?: boolean;
 	section?: GlobalSettingsSection;
 }) {
 	const { t } = useTranslation();
@@ -24,7 +26,7 @@ export function GlobalSettingsForm({
 			className="flex w-full flex-col gap-(--size-settings-section-gap)"
 			data-testid="settings-page"
 		>
-			{globalSettingsItemsFor(section, { cloudEnabled }).map((item) => (
+			{globalSettingsItemsFor(section, { cloudEnabled, remote }).map((item) => (
 				<Fragment key={item.id}>
 					<Suspense fallback={null}>{item.render(t, titleHidden)}</Suspense>
 				</Fragment>

@@ -12,6 +12,7 @@ import {
 	REMOTE_DAEMON_RESPONSE_BODY_LIMIT,
 	RemoteBodyLimitError,
 	readResponseBodyLimited,
+	readResponseBodyLimitedBytes,
 } from "./remote-body-limit";
 import {
 	getActiveRemoteProfile,
@@ -46,6 +47,8 @@ const BLOCKED_PREFIXES = [
 	"/api/v1/mobile",
 	"/api/v1/dev",
 	"/api/v1/browser",
+	"/api/v1/import",
+	"/api/v1/imports",
 	"/api/v1/system/install",
 	"/api/v1/agents/codex",
 	"/shutdown",
@@ -63,6 +66,8 @@ export interface RemoteDaemonProxyResponse {
 	status: number;
 	headers: Record<string, string>;
 	body: string;
+	/** How to decode `body`. Absent means utf8. Binary bodies cross IPC base64-encoded. */
+	bodyEncoding?: "utf8" | "base64";
 }
 
 export type RemoteDaemonStreamEvent =
@@ -126,6 +131,24 @@ function pathAllowed(method: string, path: string): boolean {
 		return false;
 	}
 	return true;
+}
+
+/**
+ * Whether a response body is safe to transport as UTF-8 text. Anything else
+ * (images, fonts, archives) crosses IPC base64-encoded so bytes survive.
+ */
+function isTextualContentType(contentType: string): boolean {
+	const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+	if (mediaType === "") return true;
+	if (mediaType.startsWith("text/")) return true;
+	if (mediaType.endsWith("+json") || mediaType.endsWith("+xml")) return true;
+	return (
+		mediaType === "application/json" ||
+		mediaType === "application/xml" ||
+		mediaType === "application/javascript" ||
+		mediaType === "application/x-www-form-urlencoded" ||
+		mediaType === "image/svg+xml"
+	);
 }
 
 /** Collapse dot segments so /api/v1/../shutdown cannot pass the allowlist. */
@@ -380,10 +403,20 @@ export function createRemoteDaemonProxy(
 			headers[key] = value;
 		});
 		try {
+			const bytes = await readResponseBodyLimitedBytes(response, REMOTE_DAEMON_RESPONSE_BODY_LIMIT);
+			if (isTextualContentType(response.headers.get("content-type") ?? "")) {
+				return {
+					status: response.status,
+					headers,
+					body: bytes.byteLength === 0 ? "" : Buffer.from(bytes).toString("utf8"),
+					bodyEncoding: "utf8",
+				};
+			}
 			return {
 				status: response.status,
 				headers,
-				body: await readResponseBodyLimited(response, REMOTE_DAEMON_RESPONSE_BODY_LIMIT),
+				body: Buffer.from(bytes).toString("base64"),
+				bodyEncoding: "base64",
 			};
 		} catch (err) {
 			if (err instanceof RemoteBodyLimitError) {

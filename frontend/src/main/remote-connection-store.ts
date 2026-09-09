@@ -7,8 +7,11 @@ import path from "node:path";
 import type {
 	ConnectionMode,
 	EnrollRemoteServerInput,
+	PublicRemoteConnectionStore,
 	RemoteServerProfilePublic,
 } from "../shared/remote-connection";
+
+export type { PublicRemoteConnectionStore };
 
 export const REMOTE_CONNECTION_FILE_NAME = "remote-servers.json";
 
@@ -20,11 +23,6 @@ export type RemoteServerProfile = RemoteServerProfilePublic & {
 export type RemoteConnectionStore = {
 	active: ConnectionMode;
 	profiles: RemoteServerProfile[];
-};
-
-export type PublicRemoteConnectionStore = {
-	active: ConnectionMode;
-	profiles: RemoteServerProfilePublic[];
 };
 
 const emptyStore = (): RemoteConnectionStore => ({

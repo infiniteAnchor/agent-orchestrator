@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apierr"
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	"github.com/aoagents/agent-orchestrator/backend/internal/observe/ownership"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 )
@@ -195,5 +196,55 @@ func TestWriteError_TypedKindsUnchanged(t *testing.T) {
 		if status != tc.status {
 			t.Fatalf("%v: status = %d, want %d", tc.err, status, tc.status)
 		}
+	}
+}
+
+func TestWriteErrorRedactsHostPathsOnLAN(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects", nil)
+	req = req.WithContext(reqctx.WithLAN(req.Context()))
+	rec := httptest.NewRecorder()
+	err := apierr.Invalid("PROJECT_PATH_INVALID", "cannot register /home/u/secret-repo", map[string]any{
+		"path": "/home/u/secret-repo",
+		"note": "checked /home/u/secret-repo/.git",
+	})
+
+	WriteError(rec, req, err)
+
+	var body APIError
+	if decodeErr := json.Unmarshal(rec.Body.Bytes(), &body); decodeErr != nil {
+		t.Fatalf("decode response: %v", decodeErr)
+	}
+	if body.Code != "PROJECT_PATH_INVALID" {
+		t.Fatalf("code = %q, want the original code", body.Code)
+	}
+	if body.Message != "cannot register <path>" {
+		t.Fatalf("LAN message = %q", body.Message)
+	}
+	if body.Details["path"] != "" {
+		t.Fatalf("LAN details.path = %#v, want empty", body.Details["path"])
+	}
+	if body.Details["note"] != "checked <path>" {
+		t.Fatalf("LAN details.note = %#v", body.Details["note"])
+	}
+}
+
+func TestWriteErrorKeepsHostPathsOnLoopback(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects", nil)
+	rec := httptest.NewRecorder()
+	err := apierr.Invalid("PROJECT_PATH_INVALID", "cannot register /home/u/secret-repo", map[string]any{
+		"path": "/home/u/secret-repo",
+	})
+
+	WriteError(rec, req, err)
+
+	var body APIError
+	if decodeErr := json.Unmarshal(rec.Body.Bytes(), &body); decodeErr != nil {
+		t.Fatalf("decode response: %v", decodeErr)
+	}
+	if body.Message != "cannot register /home/u/secret-repo" {
+		t.Fatalf("loopback message = %q", body.Message)
+	}
+	if body.Details["path"] != "/home/u/secret-repo" {
+		t.Fatalf("loopback details.path = %#v", body.Details["path"])
 	}
 }

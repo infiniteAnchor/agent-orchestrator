@@ -25,12 +25,12 @@ import {
 import { useSessionBrowserLink } from "../hooks/useSessionBrowserLink";
 import { getApiBaseUrl } from "../lib/api-client";
 import {
-	createTerminalMux,
 	createTerminalMuxPool,
 	muxUrlFromApiBase,
 	type TerminalMux,
 	type TerminalMuxPool,
 } from "../lib/terminal-mux";
+import { createDaemonTerminalMux } from "../lib/daemon-terminal-mux";
 import { cn } from "../lib/utils";
 import { useWorkspaceQuery, workspaceQueryKey } from "../hooks/useWorkspaceQuery";
 import { useRestoreSession } from "../hooks/useRestoreSession";
@@ -285,7 +285,7 @@ export function TerminalCacheProvider({
 	const muxPoolRef = useRef<TerminalMuxPool | null>(null);
 	if (!muxPoolRef.current) {
 		muxPoolRef.current = createTerminalMuxPool(() =>
-			createTerminalMux(muxUrlFromApiBase(getApiBaseUrl())),
+			createDaemonTerminalMux(muxUrlFromApiBase(getApiBaseUrl())),
 		);
 	}
 	const muxPool = muxPoolRef.current;

@@ -12,6 +12,7 @@ import {
 } from "../../hooks/useAgentReadinessQuery";
 import { agentAuthPlansQueryKey, probeAgentAuth, useAgentAuthPlans, useStartAgentAuth } from "../../hooks/useAgentAuth";
 import { closeShellTerminal, shellTerminalsQueryKey } from "../../hooks/useShellTerminals";
+import { useIsRemoteDaemon } from "../../hooks/useRemoteDaemon";
 import type { TerminalSessionState } from "../../hooks/useTerminalSession";
 import { agentLabel, AGENT_OPTIONS, type AgentId } from "../../lib/agent-options";
 import { apiClient, apiErrorCode, apiErrorMessage } from "../../lib/api-client";
@@ -117,6 +118,8 @@ export function HarnessSettingsSection({ titleHidden = false }: { titleHidden?: 
 	const refreshedSuccess = useRef(new Set<string>());
 	const pendingActions = useRef(new Set<AgentId>());
 	const [pendingAgentIds, setPendingAgentIds] = useState<Set<AgentId>>(new Set());
+	// Installing a harness mutates the daemon host and is loopback-only.
+	const remote = useIsRemoteDaemon();
 
 	const plans = useMemo(() => new Map(installers.data?.map((plan) => [plan.agentId, plan]) ?? []), [installers.data]);
 	const jobMap = useMemo(() => new Map(jobs.data?.map((job) => [job.target, job]) ?? []), [jobs.data]);
@@ -205,6 +208,13 @@ export function HarnessSettingsSection({ titleHidden = false }: { titleHidden?: 
 	};
 
 	const startInstall = async (agentId: AgentId, method: string) => {
+		if (remote) {
+			setActionErrors((current) => ({
+				...current,
+				[agentId]: t("settings.harness.remoteInstallUnavailable"),
+			}));
+			return;
+		}
 		if (!beginAction(agentId)) return;
 		setActionErrors((current) => ({ ...current, [agentId]: undefined }));
 		try {
@@ -495,7 +505,7 @@ export function HarnessSettingsSection({ titleHidden = false }: { titleHidden?: 
 								<div className="flex items-center gap-1.5">
 									{methodSelect}
 									<Button size="sm" variant="outline" disabled={pending} onClick={() => void verifyInstall(agentId)}>{t("settings.harness.verifyAgain")}</Button>
-									{selectedMethodId ? <Button className={MENU_TRIGGER_CHROME} size="sm" variant="ghost" onClick={() => void startInstall(agentId, selectedMethodId)} disabled={pending}>{t("settings.harness.retry")}</Button> : null}
+									{selectedMethodId ? <Button className={MENU_TRIGGER_CHROME} size="sm" variant="ghost" onClick={() => void startInstall(agentId, selectedMethodId)} disabled={pending || remote}>{t("settings.harness.retry")}</Button> : null}
 								</div>
 							) : !plan && installers.isPending ? (
 								<span className="inline-flex items-center gap-1.5 text-xs text-settings-muted" role="status"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" /></span>
@@ -510,7 +520,7 @@ export function HarnessSettingsSection({ titleHidden = false }: { titleHidden?: 
 										size="none"
 										variant="ghost"
 										aria-label={t("settings.harness.install")}
-										disabled={pending}
+										disabled={pending || remote}
 										onClick={() => selectedMethodId && void startInstall(agentId, selectedMethodId)}
 									>
 										<Download aria-hidden="true" />{methodLabel}

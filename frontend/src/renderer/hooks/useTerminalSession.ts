@@ -17,7 +17,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { getApiBaseUrl } from "../lib/api-client";
 import { captureRendererEvent } from "../lib/telemetry";
 import { LOCAL_ECHO_ENABLED, withPredictiveLocalEcho } from "../lib/terminal-local-echo";
-import { createTerminalMux, muxUrlFromApiBase, type TerminalMux } from "../lib/terminal-mux";
+import { createDaemonTerminalMux } from "../lib/daemon-terminal-mux";
+import { muxUrlFromApiBase, type TerminalMux } from "../lib/terminal-mux";
 import { sessionIsActive, type WorkspaceSession } from "../types/workspace";
 import { workspaceQueryKey } from "./useWorkspaceQuery";
 
@@ -159,7 +160,7 @@ const REPLAY_FIRST_BYTE_MS = 250;
 
 function defaultCreateMux(): TerminalMux {
 	// Resolved per connect, not per hook: a daemon restart can change the port.
-	return createTerminalMux(muxUrlFromApiBase(getApiBaseUrl()));
+	return createDaemonTerminalMux(muxUrlFromApiBase(getApiBaseUrl()));
 }
 
 export function useTerminalSession(session: WorkspaceSession | undefined, options: UseTerminalSessionOptions) {

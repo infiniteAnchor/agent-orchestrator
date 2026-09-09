@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 
+	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/remotewire"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/reqctx"
 	projectsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/project"
 )
@@ -15,6 +16,12 @@ func projectForWire(ctx context.Context, p projectsvc.Project) projectsvc.Projec
 	}
 	p.Path = ""
 	return p
+}
+
+// initializeRepositoryForWire omits the initialized repository path on LAN.
+func initializeRepositoryForWire(ctx context.Context, result projectsvc.InitializeRepositoryResult) projectsvc.InitializeRepositoryResult {
+	result.Path = remotewire.Path(ctx, result.Path)
+	return result
 }
 
 func projectSummariesForWire(ctx context.Context, in []projectsvc.Summary) []projectsvc.Summary {

@@ -469,14 +469,37 @@ Later phases below are unchanged.
 - Add `/mux` origin checks and bounded IPC framing, and integrate reconnects with
   the existing durable event cursor without relying on browser `EventSource`.
 
-**Phase 2 progress (backend projections):** LAN requests are marked via
-`reqctx.WithLAN` on the LAN listener. Absolute host paths are omitted on LAN for
-`/healthz`/`/readyz` (`executablePath`, `workingDirectory`,
-`startupWorkingDirectory`, `appImagePath`), project list/detail `path`, and
-shell-terminal `workingDir`. Loopback keeps the full shapes. Remaining audits
-(import flows, system requirement detail strings, conversation activity `cwd`,
-APIError `details.path`) still need projection or LAN blocklist follow-up before
-calling Phase 2 complete.
+**Phase 2 status (backend remote-safe wire): complete.** LAN requests are
+marked via `reqctx.WithLAN` on the LAN listener, and the remote route set has
+been audited. Absolute host paths are omitted on LAN for `/healthz`/`/readyz`
+(`executablePath`, `workingDirectory`, `startupWorkingDirectory`,
+`appImagePath`), project list/detail/initialize `path`, shell-terminal
+`workingDir`, system requirement `detail`, agent installer plans and jobs
+(`expectedDestination`, plus redacted `command`/`reason`/`output`/`error`),
+model catalog `warning`, conversation activity `cwd` (dropped) and remaining
+activity detail strings (redacted), and every `APIError` message and `details`
+value. `internal/httpd/remotewire` owns the projection helpers; loopback keeps
+the full shapes. The legacy import surface (`/api/v1/import`,
+`/api/v1/imports/*`) is LAN-blocked: its inputs come from a desktop-native
+folder picker, so a remote client cannot name a meaningful path, and it would
+otherwise accept an arbitrary host path and run git there.
+
+**Phase 2 status (desktop client boundary): complete.**
+`frontend/src/main/remote-connection-store.ts`, `remote-identity-gate.ts`,
+`remote-daemon-proxy.ts`, and `remote-mux-bridge.ts` pin the enrolled host id,
+check `GET /api/v1/identity` before any authenticated call, keep the bearer in
+the main process, proxy bounded HTTP over IPC (text bodies as UTF-8, binary
+bodies base64 so bytes survive), stream authenticated SSE through
+main's `fetch`/`ReadableStream`, and open `/mux` from a main-process WebSocket
+client. The renderer now selects the connection: Settings → Remote servers
+enrolls a server and switches between it and the local daemon; main reports the
+remote target through the daemon-status handshake so `api-client`, the event
+transports (`internal/httpd` SSE streams, notifications, workspace file
+watches), and the terminal mux all rebind. Remote SSE resumes from the last
+`id:` via the daemon's `after` cursor, and the main proxy allowlist mirrors the
+LAN blocklist. Loopback-only surfaces are suppressed while remote: legacy
+migration, the editor/file-manager handoff, Codex account management, Connect
+Mobile, and harness installs.
 
 ### Phase 3: durable task graph
 

@@ -1,9 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { getApiBaseUrl, hasTrustedApiBaseUrl, subscribeApiBaseUrl } from "./api-client";
+import {
+	createDaemonEventStream,
+	DAEMON_EVENT_SOURCE_CLOSED,
+	type DaemonEventStream,
+} from "./daemon-event-stream";
+import { isRemoteDaemon } from "./daemon-connection";
 import { computeSseRetryDelayMs } from "./sse-backoff";
 
 const INVALIDATE_DEBOUNCE_MS = 150;
-const EVENTSOURCE_CLOSED = 2;
 
 export type WorkspaceFileConnectionState = "connecting" | "connected" | "degraded";
 type ConnectionPhase = "idle" | "connecting" | "open" | "waiting";
@@ -20,7 +25,7 @@ type WorkspaceStream = {
 	 * so would inflate the backoff exponent past what we actually retried.
 	 */
 	retries: number;
-	source?: EventSource;
+	source?: DaemonEventStream;
 	sourceBaseUrl?: string;
 	debounce?: ReturnType<typeof setTimeout>;
 	retry?: ReturnType<typeof setTimeout>;
@@ -127,7 +132,7 @@ function createWorkspaceStream(sessionId: string, queryClient: QueryClient): Wor
 	setWorkspaceFileConnectionState(sessionId, "connecting");
 	stream.ensureConnected = () => {
 		if (stream.disposed) return;
-		if (typeof EventSource === "undefined") {
+		if (!isRemoteDaemon() && typeof EventSource === "undefined") {
 			setWorkspaceFileConnectionState(sessionId, "degraded");
 			return;
 		}
@@ -149,8 +154,8 @@ function createWorkspaceStream(sessionId: string, queryClient: QueryClient): Wor
 		stream.phase = "connecting";
 		const generation = ++stream.generation;
 		try {
-			const source = new EventSource(
-				`${baseUrl.replace(/\/+$/, "")}/api/v1/sessions/${encodeURIComponent(sessionId)}/workspace/events`,
+			const source = createDaemonEventStream(
+				`/api/v1/sessions/${encodeURIComponent(sessionId)}/workspace/events`,
 			);
 			stream.source = source;
 			source.onopen = () => {
@@ -163,7 +168,7 @@ function createWorkspaceStream(sessionId: string, queryClient: QueryClient): Wor
 			};
 			source.onerror = () => {
 				if (stream.disposed || generation !== stream.generation || stream.source !== source) return;
-				if (source.readyState === EVENTSOURCE_CLOSED) {
+				if (source.readyState === DAEMON_EVENT_SOURCE_CLOSED) {
 					handleTerminalFailure(generation);
 					return;
 				}

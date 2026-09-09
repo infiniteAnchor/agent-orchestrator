@@ -21,3 +21,9 @@ export type EnrollRemoteServerInput = {
 	/** Connection password from `ao lan enable|regenerate`. Main stores it; renderer must forget it. */
 	password: string;
 };
+
+/** The enrolled store as the renderer sees it: never includes the password. */
+export type PublicRemoteConnectionStore = {
+	active: ConnectionMode;
+	profiles: RemoteServerProfilePublic[];
+};

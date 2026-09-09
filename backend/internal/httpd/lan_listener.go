@@ -59,13 +59,19 @@ func lanRequestContext(next http.Handler) http.Handler {
 // prefixes that must never be reachable through the LAN listener: /shutdown,
 // the telemetry routes under /internal/, and the Connect Mobile control
 // surface under /api/v1/mobile, developer maintenance routes under /api/v1/dev,
-// host-mutating installer routes under /api/v1/system/install, and personal
-// Codex account-management routes under /api/v1/agents/codex. Some routes
+// host-mutating installer routes under /api/v1/system/install, personal
+// Codex account-management routes under /api/v1/agents/codex, and the legacy
+// import surface under /api/v1/import and /api/v1/imports. Some routes
 // are gated in the shared router by localControlRequest, which trusts the
 // client-supplied Host header. That header is spoofable by any LAN client. The
 // LAN listener is the one thing a caller cannot spoof: it is the physical socket
 // the request arrived on. So the block below is applied only to the LAN-served
 // handler, outermost (wrapping authMiddleware), independent of any header.
+//
+// The import routes are blocked rather than projected: their inputs come from a
+// desktop-native folder picker, so a remote client cannot name a meaningful
+// path, and /api/v1/imports/{validate,prepare-git} would otherwise accept an
+// arbitrary host path and run git there. Legacy migration is a host-local flow.
 var lanControlBlockedPrefixes = []string{
 	"/shutdown",
 	"/internal/",
@@ -73,6 +79,8 @@ var lanControlBlockedPrefixes = []string{
 	"/api/v1/dev",
 	"/api/v1/browser",
 	"/api/v1/desktop",
+	"/api/v1/import",
+	"/api/v1/imports",
 	"/api/v1/system/install",
 	"/api/v1/agents/codex",
 }

@@ -1,6 +1,12 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { aoBridge } from "./bridge";
 import { getApiBaseUrl, hasTrustedApiBaseUrl, subscribeApiBaseUrl } from "./api-client";
+import {
+	createDaemonEventStream,
+	DAEMON_EVENT_SOURCE_CLOSED,
+	type DaemonEventStream,
+} from "./daemon-event-stream";
+import { isRemoteDaemon } from "./daemon-connection";
 import { setEventsConnectionState } from "./events-connection";
 import { computeSseRetryDelayMs } from "./sse-backoff";
 import { workspaceQueryKey } from "../hooks/useWorkspaceQuery";
@@ -17,9 +23,6 @@ export type EventTransport = {
 };
 
 const INVALIDATE_WINDOW_MS = 150;
-// EventSource.CLOSED, referenced numerically so test stubs without the static
-// constants still work.
-const EVENTSOURCE_CLOSED = 2;
 
 // CDC event types the daemon pushes over the SSE stream (see
 // backend/internal/cdc/event.go). The SSE writer tags each frame with
@@ -57,9 +60,9 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 			let workspaceInvalidationPending = false;
 			let allConversationsInvalidationPending = false;
 			let retryTimer: ReturnType<typeof setTimeout> | undefined;
-			let source: EventSource | undefined;
+			let source: DaemonEventStream | undefined;
 			let sourceBaseUrl: string | undefined;
-			let accountSource: EventSource | undefined;
+			let accountSource: DaemonEventStream | undefined;
 			let accountSourceBaseUrl: string | undefined;
 			let disposed = false;
 			// Do not repeatedly cancel a slow fetch under continuous CDC traffic. A
@@ -187,8 +190,9 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 			};
 
 			const connectSource = () => {
-				// EventSource is unavailable in jsdom (tests) and some preview surfaces; guard it.
-				if (disposed || typeof EventSource === "undefined") return;
+				// EventSource is unavailable in jsdom (tests) and some preview surfaces;
+				// remote mode does not use it at all.
+				if (disposed || (!isRemoteDaemon() && typeof EventSource === "undefined")) return;
 				if (!hasTrustedApiBaseUrl()) {
 					healthAttempt += 1;
 					source?.close();
@@ -203,16 +207,28 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 					return;
 				}
 				const baseUrl = getApiBaseUrl();
-				if (!accountSource || accountSourceBaseUrl !== baseUrl || accountSource.readyState === EVENTSOURCE_CLOSED) {
+				// The Codex account stream is LAN-blocked, so a remote desktop has no
+				// account-management surface and must not open this stream at all.
+				if (isRemoteDaemon()) {
+					accountSource?.close();
+					accountSource = undefined;
+					accountSourceBaseUrl = undefined;
+				} else if (
+					!accountSource ||
+					accountSourceBaseUrl !== baseUrl ||
+					accountSource.readyState === DAEMON_EVENT_SOURCE_CLOSED
+				) {
 					accountSource?.close();
 					accountSourceBaseUrl = baseUrl;
 					try {
-						accountSource = new EventSource(`${baseUrl.replace(/\/+$/, "")}/api/v1/agents/codex/accounts/events`);
+						accountSource = createDaemonEventStream("/api/v1/agents/codex/accounts/events");
 						accountSource.onopen = () => {
 							if (disposed) return;
 							void queryClient.invalidateQueries({ queryKey: codexAccountsQueryKey });
 						};
-						accountSource.onerror = () => { if (accountSource?.readyState === EVENTSOURCE_CLOSED) scheduleRetry(); };
+						accountSource.onerror = () => {
+							if (accountSource?.readyState === DAEMON_EVENT_SOURCE_CLOSED) scheduleRetry();
+						};
 						accountSource.addEventListener("codex_account", applyAccountEvent);
 					} catch {
 						accountSource = undefined;
@@ -220,7 +236,7 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 				}
 				// Keep a still-usable source on the same base URL; replace one the
 				// browser abandoned (CLOSED) or one bound to a stale port.
-				if (source && sourceBaseUrl === baseUrl && source.readyState !== EVENTSOURCE_CLOSED) return;
+				if (source && sourceBaseUrl === baseUrl && source.readyState !== DAEMON_EVENT_SOURCE_CLOSED) return;
 				// A daemon that came back on a different port is a fresh target, not
 				// a continuation of the dead one: do not make it serve the delay the
 				// old port earned.
@@ -229,7 +245,7 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 				source = undefined;
 				sourceBaseUrl = baseUrl;
 				try {
-					source = new EventSource(`${baseUrl.replace(/\/+$/, "")}/api/v1/events`);
+					source = createDaemonEventStream("/api/v1/events");
 					const connectedSource = source;
 					source.onopen = () => {
 						if (disposed || source !== connectedSource) return;
@@ -247,7 +263,7 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 						// either way the stream is not delivering, so surface it instead
 						// of looping silently against a dead daemon.
 						setEventsConnectionState("disconnected");
-						if (source?.readyState === EVENTSOURCE_CLOSED) scheduleRetry();
+						if (source?.readyState === DAEMON_EVENT_SOURCE_CLOSED) scheduleRetry();
 						const attempt = ++healthAttempt;
 						void queryClient.refetchQueries(
 							{ queryKey: workspaceQueryKey, type: "active" },

@@ -63,12 +63,18 @@ export function useDaemonStatus(queryClient: QueryClient = defaultQueryClient) {
 			// transport's job (it invalidates, debounced, on every daemon status).
 			const previousStatus = statusRef.current;
 			statusRef.current = nextStatus;
+			// Switching enrolled servers (or local <-> remote) must not show one
+			// server's cached projects, sessions, or conversations against another.
+			const profileChanged = previousStatus.remote?.profileId !== nextStatus.remote?.profileId;
 			const daemonChanged =
 				nextStatus.state !== "ready" ||
 				previousStatus.state !== "ready" ||
 				previousStatus.port !== nextStatus.port ||
-				previousStatus.pid !== nextStatus.pid;
-			if (daemonChanged) {
+				previousStatus.pid !== nextStatus.pid ||
+				profileChanged;
+			if (profileChanged) {
+				queryClient.clear();
+			} else if (daemonChanged) {
 				queryClient.removeQueries({ queryKey: agentReadinessQueryKey, exact: true });
 				queryClient.removeQueries({ queryKey: codexAccountsQueryKey, exact: true });
 			}

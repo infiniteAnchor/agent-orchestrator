@@ -102,7 +102,7 @@ func (c *ProjectsController) initialize(w http.ResponseWriter, r *http.Request) 
 		envelope.WriteError(w, r, err)
 		return
 	}
-	envelope.WriteJSON(w, http.StatusOK, result)
+	envelope.WriteJSON(w, http.StatusOK, initializeRepositoryForWire(r.Context(), result))
 }
 func (c *ProjectsController) get(w http.ResponseWriter, r *http.Request) {
 	if c.Mgr == nil {

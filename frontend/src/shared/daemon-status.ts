@@ -28,4 +28,15 @@ export type DaemonStatus = {
 	code?: DaemonFailureCode;
 	exitCode?: number | null;
 	signal?: string | null;
+	// Set when the desktop is connected to an enrolled remote AO server instead of
+	// the local daemon. The renderer routes REST/SSE/mux through the main-process
+	// bridge; baseUrl is public (the LAN connection secret stays in main).
+	remote?: RemoteDaemonTarget;
+};
+
+/** Facts about the enrolled remote server the desktop is currently using. */
+export type RemoteDaemonTarget = {
+	profileId: string;
+	label: string;
+	baseUrl: string;
 };
