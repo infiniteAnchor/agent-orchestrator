@@ -222,6 +222,10 @@ surface (`npm run sqlc`, `npm run api`).
 
 ## In flight / not yet a runtime feature
 
+- **Headless Phase 3: durable task graph**: initial work defines the internal
+  plan/phase/task contract and pure graph validation. Persistence, task APIs,
+  bounded scheduling, attempt reconciliation, and verified result collection
+  remain pending. See the [Phase 3 execution plan](plans/phase-3-durable-task-graph.md).
 - **Browser automation acceptance**: the runtime implementation is complete.
   AO packages one
   checksum-pinned Vercel `agent-browser` Rust binary and routes a deliberately

@@ -101,13 +101,14 @@ This proposal extends these existing capabilities:
   (`backend/internal/httpd/events.go`). The CDC vocabulary today is session, PR,
   and review-run row changes (`backend/internal/cdc/event.go`). It does not
   carry Chat `turn.completed` or a task-attempt lifecycle.
-- The renderer currently opens `/api/v1/events` with browser `EventSource` and
+- In local mode the renderer opens `/api/v1/events` with browser `EventSource` and
   `/mux` with browser `WebSocket` (`frontend/src/renderer/lib/event-transport.ts`
   and `frontend/src/renderer/lib/terminal-mux.ts`). Neither browser API can add
   the LAN `Authorization` header, so those direct transports cannot be reused by
   an authenticated remote desktop. The cloud client already demonstrates the
   relevant patterns: authenticated `fetch` streaming for SSE and a separately
-  authorized terminal connection.
+  authorized terminal connection. Phase 2 now provides the remote desktop's
+  main-process HTTP/SSE/mux bridges, described in the status section below.
 - Connect Mobile already provides an opt-in authenticated LAN listener and an
   unauthenticated identity probe (`backend/internal/httpd/lan_listener.go` and
   `backend/internal/httpd/auth.go`). The terminal mux at `GET /mux` is on that
@@ -125,16 +126,17 @@ This proposal extends these existing capabilities:
   post `lanOnly=true` so Cloudflare remote access is not started.
   `restoreMobileOnBoot` only rebinds when persisted state already says enabled
   and honors `lanOnly`.
-- The Electron app is loopback-hardwired: it discovers `running.json`, talks to
+- In local mode Electron discovers `running.json`, talks to
   `http://127.0.0.1`, and opens server-returned workspace paths with
   `shell.openPath`. `/api/v1/desktop` is LAN-blocked on purpose. Existing project
-  responses and health probes also expose host-local paths; they are not yet a
-  remote-safe wire contract.
+  responses and health probes retain host-local paths on loopback. Phase 2 now
+  supports selecting an enrolled remote server and projects LAN responses
+  through the remote-safe wire contract.
 
-New work is service packaging and lifecycle policy, a way to enable LAN without
-Electron, remote Electron connection support, and durable task planning,
-scheduling, verification, and routing. Existing session reconciliation and CDC
-replay are foundations to extend for task attempts; they do not already
+Service packaging, LAN enablement without Electron, and remote Electron
+connection support are implemented in Phases 1 and 2. Remaining work is durable
+task planning, scheduling, verification, and routing. Existing session
+reconciliation and CDC replay are foundations to extend for task attempts; they do not already
 implement the proposed task scheduler.
 
 ## Runtime modes
@@ -502,6 +504,11 @@ migration, the editor/file-manager handoff, Codex account management, Connect
 Mobile, and harness installs.
 
 ### Phase 3: durable task graph
+
+**Phase 3 status: started with the graph contract and validation slice.**
+See the [execution plan](plans/phase-3-durable-task-graph.md) for the ordered
+implementation and acceptance criteria. Persistence, API operations, dispatch,
+and crash recovery remain pending; this is not yet a runtime scheduler.
 
 - Persist plans, phases, dependencies, attempts, and task results.
 - Add graph validation and a bounded ready-queue scheduler.

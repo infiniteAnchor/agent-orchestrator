@@ -26,6 +26,12 @@ Start with [architecture.md](architecture.md) for the current backend model and
 | [telemetry.md](telemetry.md)                           | User-facing overview of product telemetry, privacy safeguards, and opt-out controls.                                    |
 | [posthog-cost-controls.md](posthog-cost-controls.md)   | PostHog event-name migration, ingestion drop rules, and dashboard queries for reducing telemetry spend.              |
 
+## Active implementation
+
+Headless Phases 1 and 2 are complete. The next implementation is
+[Phase 3: durable task graph](plans/phase-3-durable-task-graph.md), beginning
+with the graph contract and validation before persistence and scheduling.
+
 ## Mental model
 
 Persist durable facts, derive display status:
