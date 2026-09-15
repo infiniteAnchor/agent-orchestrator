@@ -607,6 +607,73 @@ type ShellTerminal struct {
 	SessionID  sql.NullString
 }
 
+type Task struct {
+	PlanID    string
+	ID        string
+	PhaseID   sql.NullString
+	Title     string
+	Prompt    string
+	Position  int64
+	State     domain.TaskState
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type TaskAttempt struct {
+	ID            string
+	PlanID        string
+	TaskID        string
+	AttemptNumber int64
+	State         domain.TaskAttemptState
+	SessionID     *domain.SessionID
+	Harness       *domain.AgentHarness
+	ClaimedAt     time.Time
+	StartedAt     sql.NullTime
+	FinishedAt    sql.NullTime
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type TaskDependency struct {
+	PlanID          string
+	TaskID          string
+	DependsOnTaskID string
+	Position        int64
+}
+
+type TaskPhase struct {
+	PlanID   string
+	ID       string
+	Title    string
+	Position int64
+}
+
+type TaskPlan struct {
+	ID        string
+	ProjectID domain.ProjectID
+	Title     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type TaskResult struct {
+	ID         string
+	PlanID     string
+	TaskID     string
+	AttemptID  string
+	Outcome    domain.TaskResultOutcome
+	Summary    sql.NullString
+	Evidence   string
+	RecordedAt time.Time
+}
+
+type TaskVerificationCommand struct {
+	PlanID   string
+	TaskID   string
+	Position int64
+	Command  string
+}
+
 type TelemetryEvent struct {
 	ID          string
 	OccurredAt  time.Time
