@@ -608,15 +608,17 @@ type ShellTerminal struct {
 }
 
 type Task struct {
-	PlanID    string
-	ID        string
-	PhaseID   sql.NullString
-	Title     string
-	Prompt    string
-	Position  int64
-	State     domain.TaskState
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	PlanID       string
+	ID           string
+	PhaseID      sql.NullString
+	Title        string
+	Prompt       string
+	Position     int64
+	State        domain.TaskState
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	WorkspaceKey string
+	Harness      string
 }
 
 type TaskAttempt struct {
@@ -632,6 +634,7 @@ type TaskAttempt struct {
 	FinishedAt    sql.NullTime
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	RuntimeRef    string
 }
 
 type TaskDependency struct {

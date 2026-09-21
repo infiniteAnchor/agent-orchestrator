@@ -18,13 +18,20 @@ import (
 	prsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/pr"
 	projectsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/project"
 	reviewsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/review"
+	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 )
 
 // APIDeps bundles every service the API layer's controllers depend on.
 type APIDeps struct {
-	Agents             controllers.AgentCatalog
-	CodexAccounts      controllers.CodexAccountService
-	Projects           projectsvc.Manager
+	Agents        controllers.AgentCatalog
+	CodexAccounts controllers.CodexAccountService
+	Projects      projectsvc.Manager
+	TaskPlans     taskplansvc.Manager
+	TaskSchedule  tasksched.API
+	// TaskRecovery gates /readyz. Nil means task recovery is not part of this
+	// process, so the probe stays "listening and ready".
+	TaskRecovery       TaskRecoveryGate
 	Sessions           controllers.SessionService
 	DesktopWorkspaces  controllers.DesktopWorkspaceService
 	Activity           controllers.ActivityRecorder
@@ -106,6 +113,7 @@ type API struct {
 	agents        *controllers.AgentsController
 	codexAccounts *controllers.CodexAccountsController
 	projects      *controllers.ProjectsController
+	taskPlans     *controllers.TaskPlansController
 	sessions      *controllers.SessionsController
 	desktop       *controllers.DesktopWorkspaceController
 	usage         *controllers.UsageController
@@ -142,6 +150,7 @@ func NewAPI(cfg config.Config, deps APIDeps) *API {
 		projects: &controllers.ProjectsController{
 			Mgr: deps.Projects,
 		},
+		taskPlans: &controllers.TaskPlansController{Svc: deps.TaskPlans, Schedule: deps.TaskSchedule},
 		sessions: &controllers.SessionsController{
 			Svc:           deps.Sessions,
 			Activity:      deps.Activity,
@@ -189,6 +198,7 @@ func (a *API) Register(root chi.Router) {
 			a.agents.Register(r)
 			a.codexAccounts.Register(r)
 			a.projects.Register(r)
+			a.taskPlans.Register(r)
 			a.sessions.Register(r)
 			a.desktop.Register(r)
 			a.usage.Register(r)

@@ -2232,6 +2232,360 @@ paths:
       summary: Remember project permissions for future sessions
       tags:
       - projects
+  /api/v1/projects/{id}/task-plans:
+    get:
+      operationId: listTaskPlans
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Maximum plans to return. Defaults to 50.
+        in: query
+        name: limit
+        schema:
+          description: Maximum plans to return. Defaults to 50.
+          maximum: 100
+          minimum: 1
+          type: integer
+      - description: Opaque cursor returned by the previous page.
+        in: query
+        name: cursor
+        schema:
+          description: Opaque cursor returned by the previous page.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTaskPlansResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List one bounded page of durable task plans
+      tags:
+      - task-plans
+    post:
+      operationId: createTaskPlan
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskPlanInput'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPlanSummaryEnvelope'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Request Entity Too Large
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Validate and atomically create a durable task plan
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}:
+    get:
+      operationId: getTaskPlan
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPlanEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Fetch one validated durable task graph
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/dispatch:
+    post:
+      operationId: dispatchTaskPlan
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDispatchResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Service Unavailable
+      summary: Claim ready tasks and launch one attempt each
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/schedule:
+    get:
+      operationId: getTaskSchedule
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSchedule'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Read the derived ready queue for one task plan
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/candidate:
+    post:
+      operationId: submitTaskCandidate
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Task identifier within the plan.
+        in: path
+        name: taskId
+        required: true
+        schema:
+          description: Task identifier within the plan.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCandidateInput'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskCandidateResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Service Unavailable
+      summary: Verify an explicit task result and unlock dependents when it passes
+      tags:
+      - task-plans
   /api/v1/projects/clone:
     post:
       operationId: cloneProject
@@ -8807,6 +9161,30 @@ components:
       - cachedTokens
       - totalTokens
       type: object
+    CreateTaskPlanInput:
+      properties:
+        id:
+          maxLength: 128
+          type: string
+        phases:
+          items:
+            $ref: '#/components/schemas/TaskPlanPhaseInput'
+          maxItems: 100
+          type: array
+        tasks:
+          items:
+            $ref: '#/components/schemas/TaskPlanTaskInput'
+          maxItems: 500
+          minItems: 1
+          type: array
+        title:
+          maxLength: 512
+          type: string
+      required:
+      - id
+      - title
+      - tasks
+      type: object
     DegradedProject:
       properties:
         id:
@@ -9569,6 +9947,17 @@ components:
           type: array
       required:
       - shellTerminals
+      type: object
+    ListTaskPlansResponse:
+      properties:
+        nextCursor:
+          type: string
+        taskPlans:
+          items:
+            $ref: '#/components/schemas/TaskPlanSummary'
+          type: array
+      required:
+      - taskPlans
       type: object
     ListWorkspaceFilesResponse:
       properties:
@@ -11635,6 +12024,257 @@ components:
       - ready
       - requirements
       type: object
+    TaskCandidateInput:
+      properties:
+        attemptId:
+          maxLength: 128
+          type: string
+        signal:
+          enum:
+          - explicit_result
+          - process_exit
+          - turn_completed
+          type: string
+        summary:
+          maxLength: 4096
+          type: string
+      required:
+      - attemptId
+      - signal
+      type: object
+    TaskCandidateResponse:
+      properties:
+        attemptId:
+          type: string
+        outcome:
+          type: string
+        taskId:
+          type: string
+        taskState:
+          type: string
+      required:
+      - attemptId
+      - taskId
+      - outcome
+      - taskState
+      type: object
+    TaskDispatchResponse:
+      properties:
+        claims:
+          items:
+            $ref: '#/components/schemas/TaskScheduleAttempt'
+          type: array
+        recovery:
+          type: string
+      required:
+      - recovery
+      - claims
+      type: object
+    TaskPlan:
+      properties:
+        id:
+          type: string
+        phases:
+          items:
+            $ref: '#/components/schemas/TaskPlanPhase'
+          type: array
+        projectId:
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/TaskPlanTask'
+          type: array
+        title:
+          type: string
+      required:
+      - id
+      - projectId
+      - title
+      - phases
+      - tasks
+      type: object
+    TaskPlanEnvelope:
+      properties:
+        taskPlan:
+          $ref: '#/components/schemas/TaskPlan'
+      required:
+      - taskPlan
+      type: object
+    TaskPlanPhase:
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+      required:
+      - id
+      - title
+      type: object
+    TaskPlanPhaseInput:
+      properties:
+        id:
+          maxLength: 128
+          type: string
+        title:
+          maxLength: 512
+          type: string
+      required:
+      - id
+      - title
+      type: object
+    TaskPlanSummary:
+      properties:
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        projectId:
+          type: string
+        title:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - id
+      - projectId
+      - title
+      - createdAt
+      - updatedAt
+      type: object
+    TaskPlanSummaryEnvelope:
+      properties:
+        taskPlan:
+          $ref: '#/components/schemas/TaskPlanSummary'
+      required:
+      - taskPlan
+      type: object
+    TaskPlanTask:
+      properties:
+        dependsOn:
+          items:
+            type: string
+          type: array
+        harness:
+          type: string
+        id:
+          type: string
+        phaseId:
+          type: string
+        prompt:
+          type: string
+        title:
+          type: string
+        verificationCommands:
+          items:
+            type: string
+          type: array
+        workspaceKey:
+          type: string
+      required:
+      - id
+      - title
+      - prompt
+      - dependsOn
+      - verificationCommands
+      - workspaceKey
+      type: object
+    TaskPlanTaskInput:
+      properties:
+        dependsOn:
+          items:
+            type: string
+          maxItems: 5000
+          type: array
+        harness:
+          maxLength: 64
+          type: string
+        id:
+          maxLength: 128
+          type: string
+        phaseId:
+          maxLength: 128
+          type: string
+        prompt:
+          maxLength: 65536
+          type: string
+        title:
+          maxLength: 512
+          type: string
+        verificationCommands:
+          items:
+            type: string
+          maxItems: 1000
+          type: array
+        workspaceKey:
+          maxLength: 128
+          type: string
+      required:
+      - id
+      - title
+      - prompt
+      type: object
+    TaskSchedule:
+      properties:
+        attempts:
+          items:
+            $ref: '#/components/schemas/TaskScheduleAttempt'
+          type: array
+        readyTaskIds:
+          items:
+            type: string
+          type: array
+        recovery:
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/TaskScheduleTask'
+          type: array
+      required:
+      - recovery
+      - readyTaskIds
+      - tasks
+      - attempts
+      type: object
+    TaskScheduleAttempt:
+      properties:
+        attemptNumber:
+          type: integer
+        id:
+          type: string
+        runtimeRef:
+          type: string
+        sessionId:
+          type: string
+        state:
+          type: string
+        taskId:
+          type: string
+      required:
+      - id
+      - taskId
+      - attemptNumber
+      - state
+      type: object
+    TaskScheduleTask:
+      properties:
+        harness:
+          type: string
+        id:
+          type: string
+        ready:
+          type: boolean
+        state:
+          type: string
+        workspaceKey:
+          type: string
+      required:
+      - id
+      - state
+      - workspaceKey
+      - ready
+      type: object
     TrackerIntakeConfig:
       properties:
         assignee:
@@ -12043,6 +12683,8 @@ tags:
   name: agents
 - description: Project registry, configuration, and lifecycle administration
   name: projects
+- description: Validated, durable project task graphs
+  name: task-plans
 - description: Agent session lifecycle and messaging
   name: sessions
 - description: Pull-request actions (SCM lane)

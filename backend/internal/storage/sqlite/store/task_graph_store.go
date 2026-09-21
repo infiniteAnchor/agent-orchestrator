@@ -30,9 +30,10 @@ import (
 // Validation runs before any row is written, so an invalid graph cannot leave a
 // partial plan behind.
 //
-// The project is NOT verified here. The caller owns that check (see the
-// requireProject pattern in service/session), and a missing project surfaces as
-// an FK error rather than a domain error.
+// The insert selects an active project while holding the store write lock, so a
+// concurrent archive cannot slip between the service's ownership check and the
+// durable write. A missing or archived project returns
+// domain.ErrTaskPlanProjectNotFound.
 func (s *Store) CreateTaskPlan(ctx context.Context, plan domain.TaskPlan, now time.Time) (domain.TaskPlanSummary, error) {
 	if err := plan.Validate(); err != nil {
 		return domain.TaskPlanSummary{}, err
@@ -47,14 +48,18 @@ func (s *Store) CreateTaskPlan(ctx context.Context, plan domain.TaskPlan, now ti
 	defer s.writeMu.Unlock()
 
 	err := s.inTx(ctx, "create task plan", func(q *gen.Queries) error {
-		if err := q.InsertTaskPlan(ctx, gen.InsertTaskPlanParams{
+		inserted, err := q.InsertTaskPlan(ctx, gen.InsertTaskPlanParams{
 			ID:        plan.ID,
 			ProjectID: domain.ProjectID(plan.ProjectID),
 			Title:     plan.Title,
 			CreatedAt: now,
 			UpdatedAt: now,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("insert task plan %s: %w", plan.ID, err)
+		}
+		if inserted == 0 {
+			return fmt.Errorf("insert task plan %s: %w", plan.ID, domain.ErrTaskPlanProjectNotFound)
 		}
 
 		for i, phase := range plan.Phases {
@@ -79,15 +84,17 @@ func (s *Store) CreateTaskPlan(ctx context.Context, plan domain.TaskPlan, now ti
 				phaseID = sql.NullString{String: task.PhaseID, Valid: true}
 			}
 			if err := q.InsertTask(ctx, gen.InsertTaskParams{
-				PlanID:    plan.ID,
-				ID:        task.ID,
-				PhaseID:   phaseID,
-				Title:     task.Title,
-				Prompt:    task.Prompt,
-				Position:  int64(i),
-				State:     domain.TaskStateQueued,
-				CreatedAt: now,
-				UpdatedAt: now,
+				PlanID:       plan.ID,
+				ID:           task.ID,
+				PhaseID:      phaseID,
+				Title:        task.Title,
+				Prompt:       task.Prompt,
+				WorkspaceKey: task.WorkspaceKey,
+				Harness:      task.Harness,
+				Position:     int64(i),
+				State:        domain.TaskStateQueued,
+				CreatedAt:    now,
+				UpdatedAt:    now,
 			}); err != nil {
 				return fmt.Errorf("insert task %s: %w", task.ID, err)
 			}
@@ -118,6 +125,9 @@ func (s *Store) CreateTaskPlan(ctx context.Context, plan domain.TaskPlan, now ti
 		return nil
 	})
 	if err != nil {
+		if isSQLiteUnique(err) || isSQLitePrimaryKey(err) {
+			return domain.TaskPlanSummary{}, fmt.Errorf("create task plan %s: %w", plan.ID, domain.ErrDuplicateTaskPlan)
+		}
 		return domain.TaskPlanSummary{}, err
 	}
 	return domain.TaskPlanSummary{
@@ -155,8 +165,19 @@ func (s *Store) GetTaskPlan(ctx context.Context, projectID domain.ProjectID, pla
 // returns summaries rather than graphs: materialising every task, edge, and
 // command for a whole project is unbounded work, and the list surface does not
 // need it.
-func (s *Store) ListTaskPlans(ctx context.Context, projectID domain.ProjectID) ([]domain.TaskPlanSummary, error) {
-	rows, err := s.qr.ListTaskPlans(ctx, projectID)
+func (s *Store) ListTaskPlans(
+	ctx context.Context,
+	projectID domain.ProjectID,
+	beforeCreatedAt time.Time,
+	beforeID string,
+	limit int,
+) ([]domain.TaskPlanSummary, error) {
+	rows, err := s.qr.ListTaskPlansPage(ctx, gen.ListTaskPlansPageParams{
+		ProjectID:       projectID,
+		BeforeCreatedAt: beforeCreatedAt,
+		BeforeID:        beforeID,
+		PageLimit:       int64(limit),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list task plans for project %s: %w", projectID, err)
 	}
@@ -218,6 +239,8 @@ func (s *Store) assembleTaskPlan(ctx context.Context, q *gen.Queries, plan domai
 			Prompt:               row.Prompt,
 			DependsOn:            dependenciesByTask[row.ID],
 			VerificationCommands: commandsByTask[row.ID],
+			WorkspaceKey:         row.WorkspaceKey,
+			Harness:              row.Harness,
 		})
 	}
 	return plan, nil
@@ -309,6 +332,7 @@ func (s *Store) CreateTaskAttempt(ctx context.Context, attempt domain.TaskAttemp
 			State:         attempt.State,
 			SessionID:     nullableSessionID(attempt.SessionID),
 			Harness:       nullableHarness(attempt.Harness),
+			RuntimeRef:    attempt.RuntimeRef,
 			ClaimedAt:     attempt.ClaimedAt,
 			StartedAt:     nullableTime(attempt.StartedAt),
 			FinishedAt:    nullableTime(attempt.FinishedAt),
@@ -331,7 +355,7 @@ func (s *Store) GetTaskAttempt(ctx context.Context, attemptID string) (domain.Ta
 	if err != nil {
 		return domain.TaskAttempt{}, false, fmt.Errorf("get task attempt %s: %w", attemptID, err)
 	}
-	return taskAttemptFromRow(row), true, nil
+	return taskAttemptFromGet(row), true, nil
 }
 
 // ListTaskAttempts returns a task's attempts in claim order.
@@ -342,7 +366,7 @@ func (s *Store) ListTaskAttempts(ctx context.Context, planID, taskID string) ([]
 	}
 	out := make([]domain.TaskAttempt, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, taskAttemptFromRow(row))
+		out = append(out, taskAttemptFromList(row))
 	}
 	return out, nil
 }
@@ -411,7 +435,7 @@ func settleTaskAttempt(
 	if err != nil {
 		return domain.TaskAttempt{}, false, fmt.Errorf("read task attempt %s: %w", attemptID, err)
 	}
-	current := taskAttemptFromRow(row)
+	current := taskAttemptFromGet(row)
 	if current.State != from {
 		return domain.TaskAttempt{}, false, nil
 	}
@@ -436,6 +460,8 @@ func settleTaskAttempt(
 	rows, err := q.TransitionTaskAttempt(ctx, gen.TransitionTaskAttemptParams{
 		State:      next.State,
 		SessionID:  nullableSessionID(next.SessionID),
+		Harness:    nullableHarness(next.Harness),
+		RuntimeRef: next.RuntimeRef,
 		StartedAt:  nullableTime(next.StartedAt),
 		FinishedAt: nullableTime(next.FinishedAt),
 		UpdatedAt:  next.UpdatedAt,
@@ -564,29 +590,52 @@ func (s *Store) ListVerifiedTaskResults(ctx context.Context, planID string) ([]d
 	return out, nil
 }
 
-func taskAttemptFromRow(row gen.TaskAttempt) domain.TaskAttempt {
+func taskAttemptFromGet(row gen.GetTaskAttemptRow) domain.TaskAttempt {
+	return taskAttemptFromFields(row.ID, row.PlanID, row.TaskID, row.AttemptNumber, row.State, row.SessionID, row.Harness, row.RuntimeRef, row.ClaimedAt, row.StartedAt, row.FinishedAt, row.CreatedAt, row.UpdatedAt)
+}
+
+func taskAttemptFromList(row gen.ListTaskAttemptsRow) domain.TaskAttempt {
+	return taskAttemptFromFields(row.ID, row.PlanID, row.TaskID, row.AttemptNumber, row.State, row.SessionID, row.Harness, row.RuntimeRef, row.ClaimedAt, row.StartedAt, row.FinishedAt, row.CreatedAt, row.UpdatedAt)
+}
+
+func taskAttemptFromOpen(row gen.ListOpenTaskAttemptsRow) domain.TaskAttempt {
+	return taskAttemptFromFields(row.ID, row.PlanID, row.TaskID, row.AttemptNumber, row.State, row.SessionID, row.Harness, row.RuntimeRef, row.ClaimedAt, row.StartedAt, row.FinishedAt, row.CreatedAt, row.UpdatedAt)
+}
+
+func taskAttemptFromFields(
+	id, planID, taskID string,
+	number int64,
+	state domain.TaskAttemptState,
+	sessionID *domain.SessionID,
+	harness *domain.AgentHarness,
+	runtimeRef string,
+	claimedAt time.Time,
+	startedAt, finishedAt sql.NullTime,
+	createdAt, updatedAt time.Time,
+) domain.TaskAttempt {
 	attempt := domain.TaskAttempt{
-		ID:            row.ID,
-		PlanID:        row.PlanID,
-		TaskID:        row.TaskID,
-		AttemptNumber: int(row.AttemptNumber),
-		State:         row.State,
-		ClaimedAt:     row.ClaimedAt,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
+		ID:            id,
+		PlanID:        planID,
+		TaskID:        taskID,
+		AttemptNumber: int(number),
+		State:         state,
+		RuntimeRef:    runtimeRef,
+		ClaimedAt:     claimedAt,
+		CreatedAt:     createdAt,
+		UpdatedAt:     updatedAt,
 	}
-	if row.SessionID != nil {
-		attempt.SessionID = string(*row.SessionID)
+	if sessionID != nil {
+		attempt.SessionID = string(*sessionID)
 	}
-	if row.Harness != nil {
-		attempt.Harness = *row.Harness
+	if harness != nil {
+		attempt.Harness = *harness
 	}
-	if row.StartedAt.Valid {
-		started := row.StartedAt.Time
+	if startedAt.Valid {
+		started := startedAt.Time
 		attempt.StartedAt = &started
 	}
-	if row.FinishedAt.Valid {
-		finished := row.FinishedAt.Time
+	if finishedAt.Valid {
+		finished := finishedAt.Time
 		attempt.FinishedAt = &finished
 	}
 	return attempt

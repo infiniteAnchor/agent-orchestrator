@@ -28,9 +28,9 @@ Start with [architecture.md](architecture.md) for the current backend model and
 
 ## Active implementation
 
-Headless Phases 1 and 2 are complete. The next implementation is
-[Phase 3: durable task graph](plans/phase-3-durable-task-graph.md), beginning
-with the graph contract and validation before persistence and scheduling.
+Headless Phases 1, 2, and 3 are complete. Phase 3's contracts are indexed in
+[phase-3-contract-index.md](plans/phase-3-contract-index.md). Phase 4 is
+planner automation.
 
 ## Mental model
 

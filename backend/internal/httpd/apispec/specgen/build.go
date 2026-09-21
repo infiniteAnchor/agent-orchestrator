@@ -19,6 +19,8 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
 	importsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/importer"
 	projectsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/project"
+	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 )
 
 // Build reflects the Go contract types and the operation registry below into
@@ -62,6 +64,8 @@ func Build() ([]byte, error) {
 			"Supported and locally runnable agent adapters"),
 		*(&openapi31.Tag{Name: "projects"}).WithDescription(
 			"Project registry, configuration, and lifecycle administration"),
+		*(&openapi31.Tag{Name: "task-plans"}).WithDescription(
+			"Validated, durable project task graphs"),
 		*(&openapi31.Tag{Name: "sessions"}).WithDescription(
 			"Agent session lifecycle and messaging"),
 		*(&openapi31.Tag{Name: "prs"}).WithDescription(
@@ -210,6 +214,21 @@ var schemaNames = map[string]string{ //nolint:gosec // Public OpenAPI type names
 	// httpd/controllers (wire envelopes)
 	"ControllersListProjectsResponse":                     "ListProjectsResponse",
 	"ControllersProjectResponse":                          "ProjectResponse",
+	"ControllersTaskPlanIDParam":                          "TaskPlanIDParam",
+	"ControllersListTaskPlansQuery":                       "ListTaskPlansQuery",
+	"ControllersTaskPlanPhaseResponse":                    "TaskPlanPhase",
+	"ControllersTaskPlanTaskResponse":                     "TaskPlanTask",
+	"ControllersTaskPlanResponse":                         "TaskPlan",
+	"ControllersTaskPlanSummaryResponse":                  "TaskPlanSummary",
+	"ControllersTaskPlanEnvelope":                         "TaskPlanEnvelope",
+	"ControllersTaskPlanSummaryEnvelope":                  "TaskPlanSummaryEnvelope",
+	"ControllersListTaskPlansResponse":                    "ListTaskPlansResponse",
+	"ControllersTaskIDParam":                              "TaskIDParam",
+	"ControllersTaskScheduleResponse":                     "TaskSchedule",
+	"ControllersTaskScheduleTask":                         "TaskScheduleTask",
+	"ControllersTaskScheduleAttempt":                      "TaskScheduleAttempt",
+	"ControllersTaskDispatchResponse":                     "TaskDispatchResponse",
+	"ControllersTaskCandidateResponse":                    "TaskCandidateResponse",
 	"ControllersAgentIDParam":                             "AgentIDParam",
 	"ControllersCodexAccountIDParam":                      "CodexAccountIDParam",
 	"ControllersCodexAccountLoginIDParam":                 "CodexAccountLoginIDParam",
@@ -444,6 +463,10 @@ var schemaNames = map[string]string{ //nolint:gosec // Public OpenAPI type names
 	"ProjectSetConfigInput":             "SetProjectConfigInput",
 	"ProjectUpdateSettingsInput":        "UpdateProjectSettingsInput",
 	"ProjectWorkspaceRepo":              "WorkspaceRepo",
+	"TaskplanCreateInput":               "CreateTaskPlanInput",
+	"TaskplanPhaseInput":                "TaskPlanPhaseInput",
+	"TaskplanTaskInput":                 "TaskPlanTaskInput",
+	"TaskschedCandidate":                "TaskCandidateInput",
 	"SessionWorkspaceFileStatus":        "WorkspaceFileStatus",
 }
 
@@ -539,6 +562,7 @@ func operations() []operation {
 	ops := append([]operation{}, eventOperations()...)
 	ops = append(ops, agentOperations()...)
 	ops = append(ops, projectOperations()...)
+	ops = append(ops, taskPlanOperations()...)
 	ops = append(ops, sessionOperations()...)
 	ops = append(ops, prOperations()...)
 	ops = append(ops, reviewOperations()...)
@@ -1816,6 +1840,91 @@ func projectOperations() []operation {
 				{http.StatusBadRequest, envelope.APIError{}},
 				{http.StatusNotFound, envelope.APIError{}},
 				{http.StatusInternalServerError, envelope.APIError{}},
+			},
+		},
+	}
+}
+
+// taskPlanOperations is separate from project registry administration even
+// though every route is nested under a project ownership boundary.
+func taskPlanOperations() []operation {
+	return []operation{
+		{
+			method: http.MethodGet, path: "/api/v1/projects/{id}/task-plans", id: "listTaskPlans", tag: "task-plans",
+			summary:    "List one bounded page of durable task plans",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.ListTaskPlansQuery{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.ListTaskPlansResponse{}},
+				{http.StatusBadRequest, envelope.APIError{}},
+				{http.StatusNotFound, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans", id: "createTaskPlan", tag: "task-plans",
+			summary:    "Validate and atomically create a durable task plan",
+			pathParams: []any{controllers.ProjectIDParam{}},
+			reqBody:    taskplansvc.CreateInput{},
+			resps: []respUnit{
+				{http.StatusCreated, controllers.TaskPlanSummaryEnvelope{}},
+				{http.StatusBadRequest, envelope.APIError{}},
+				{http.StatusNotFound, envelope.APIError{}},
+				{http.StatusConflict, envelope.APIError{}},
+				{http.StatusRequestEntityTooLarge, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodGet, path: "/api/v1/projects/{id}/task-plans/{planId}", id: "getTaskPlan", tag: "task-plans",
+			summary:    "Fetch one validated durable task graph",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskPlanEnvelope{}},
+				{http.StatusBadRequest, envelope.APIError{}},
+				{http.StatusNotFound, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodGet, path: "/api/v1/projects/{id}/task-plans/{planId}/schedule", id: "getTaskSchedule", tag: "task-plans",
+			summary:    "Read the derived ready queue for one task plan",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskScheduleResponse{}},
+				{http.StatusBadRequest, envelope.APIError{}},
+				{http.StatusNotFound, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/dispatch", id: "dispatchTaskPlan", tag: "task-plans",
+			summary:    "Claim ready tasks and launch one attempt each",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskDispatchResponse{}},
+				{http.StatusNotFound, envelope.APIError{}},
+				{http.StatusServiceUnavailable, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/candidate", id: "submitTaskCandidate", tag: "task-plans",
+			summary:    "Verify an explicit task result and unlock dependents when it passes",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskIDParam{}},
+			reqBody:    tasksched.Candidate{},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskCandidateResponse{}},
+				{http.StatusBadRequest, envelope.APIError{}},
+				{http.StatusNotFound, envelope.APIError{}},
+				{http.StatusConflict, envelope.APIError{}},
+				{http.StatusServiceUnavailable, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
 			},
 		},
 	}

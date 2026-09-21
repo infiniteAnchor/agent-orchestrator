@@ -1,35 +1,36 @@
 # Phase 3: durable task graph execution plan
 
 Phase 1 headless packaging and Phase 2 remote desktop support are complete.
-Phase 3 starts with a pure graph contract; it is not yet a runtime feature.
+Phase 3 is the durable task graph: validation, persistence, dispatch, and recovery.
 The governing design is [Headless Server Control Plane](../headless-server-control-plane.md).
 
 ## Implementation slices
 
-1. **Graph contract and validation (initial slice).** Add domain plan, phase,
+1. **Graph contract and validation (complete).** Add domain plan, phase,
    and task definitions. Reject missing identities/content, duplicate identities,
    invalid phase/dependency references, duplicate edges, self-dependencies,
    cycles, and missing verification on tasks that unlock dependents. Validate
    without invoking a harness or executing verification commands.
-2. **Atomic persistence.** Add new SQLite migrations, sqlc queries, and store
+2. **Atomic persistence (complete).** Add new SQLite migrations, sqlc queries, and store
    methods for plans, phases, tasks, dependencies, attempts, and results. Validate
    graphs before atomic creation. Define attempt transitions and immutable result
    evidence before exposing mutations. Add trigger-backed task CDC vocabulary
    and replay tests. Test migrations against disposable databases; deploying a
    migration to existing user data is a separate operation.
-3. **Service and API.** Add project-scoped create/get/list operations using domain
+3. **Service and API (complete).** Add project-scoped create/get/list operations using domain
    records behind a narrow store interface. Bound graph/request sizes, verify
    project ownership, and regenerate OpenAPI and frontend types. Define remote
    projections for result evidence before exposing server paths or command output.
-4. **Ready queue and dispatch.** Derive readiness from verified durable results;
+4. **Ready queue and dispatch (complete).** Derive readiness from verified durable results;
    atomically claim tasks under project/harness concurrency limits. Persist an
-   attempt identity before dispatch and carry it through session/runtime creation.
+   attempt identity before dispatch and carry it through runtime creation.
    Resolve workspace ownership conflicts before enabling parallel execution.
-5. **Recovery and completion.** Adopt existing work by attempt identity after a
+5. **Recovery and completion (complete).** Adopt existing work by attempt identity after a
    crash; hold ambiguous dispatches for reconciliation. Persist candidate results,
    verification evidence, and completion consistently. Recover collection and
-   dependency readiness from SQLite. Gate dispatch during startup recovery and
-   define `/readyz` semantics explicitly.
+   dependency readiness from SQLite. Gate dispatch during startup recovery.
+   `/readyz` stays 503 with `taskRecovery=pending` until that recovery finishes;
+   `/healthz` remains liveness. See the [contract index](phase-3-contract-index.md).
 
 Each slice requires focused tests and diff review before the next slice. Keep
 automatic dispatch disabled until claims, launch reconciliation, and verified
@@ -49,18 +50,23 @@ completion work together.
 - Validation checks the declared verification requirement, not whether the
   command proves success. Executing and interpreting verification belongs to
   the later server-owned result collector.
-- Harness selection, worktree policies, retries, attempts, and result records
-  will be added with their consuming persistence/dispatch slices. The initial
-  types are internal domain contracts, not an HTTP schema.
+- Harness selection, worktree policies, and retries remain with their consuming
+  dispatch slices. Attempt and result records are durable internal contracts but
+  are not exposed by the task-plan API; result evidence needs a dedicated
+  remote-safe projection before it becomes a wire contract.
 
 ## Acceptance and remaining work
 
-The initial slice must accept disconnected and out-of-order DAGs, reject invalid
-graphs deterministically, and handle deep dependency chains without recursive
-cycle detection. It introduces no database changes or runtime dispatch.
+The completed contract accepts disconnected and out-of-order DAGs, rejects
+invalid graphs deterministically, and handles deep dependency chains without
+recursive cycle detection.
 
-Phase 3 is complete only when two dependent tasks can run headlessly, a verified
-result unlocks the second while the first worker may remain alive, and a restart
-at the claim/launch/record boundary does not create duplicate work. Clean process
-exit, Chat `turn.completed`, and failed runtime probes are insufficient evidence
-for success or replacement. Planner automation remains Phase 4.
+The scheduler claims a ready task only after writing its attempt, launches that
+same attempt, and records a runtime ref only when the launcher reports a
+started worker. A verified result unlocks the next task while the first worker
+may still be alive. Recovery adopts a remembered launch, holds an ambiguous
+one, and rebuilds dependent readiness from SQLite. Clean process exit, Chat
+`turn.completed`, and a failed or unknown runtime probe do not count as success
+or as permission to start a replacement attempt. Planner automation remains
+Phase 4. The index of these contracts is
+[phase-3-contract-index.md](phase-3-contract-index.md).

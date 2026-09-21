@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -202,7 +203,7 @@ func TestTaskGraphStore_ScopesPlansToProject(t *testing.T) {
 	if _, ok, err := s.GetTaskPlan(ctx, "proj-2", "plan-1"); err != nil || ok {
 		t.Fatalf("another project must not read the plan: ok=%v err=%v", ok, err)
 	}
-	plans, err := s.ListTaskPlans(ctx, "proj-2")
+	plans, err := s.ListTaskPlans(ctx, "proj-2", time.Time{}, "", 100)
 	if err != nil {
 		t.Fatalf("list for other project: %v", err)
 	}
@@ -238,7 +239,7 @@ func TestTaskGraphStore_ListsPlanSummariesNewestFirst(t *testing.T) {
 		}
 	}
 
-	plans, err := s.ListTaskPlans(ctx, "proj-1")
+	plans, err := s.ListTaskPlans(ctx, "proj-1", time.Time{}, "", 100)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -247,6 +248,74 @@ func TestTaskGraphStore_ListsPlanSummariesNewestFirst(t *testing.T) {
 	}
 	if plans[0].ID != "plan-new" || plans[1].ID != "plan-old" {
 		t.Fatalf("want newest first, got %s then %s", plans[0].ID, plans[1].ID)
+	}
+}
+
+func TestTaskGraphStore_PaginatesPlansWithStableTimestampTieBreak(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "proj-1")
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, id := range []string{"plan-c", "plan-a", "plan-b"} {
+		if _, err := s.CreateTaskPlan(ctx, domain.TaskPlan{
+			ID: id, ProjectID: "proj-1", Title: id,
+			Tasks: []domain.PlannedTask{{ID: "t1", Title: "One", Prompt: "do it"}},
+		}, now); err != nil {
+			t.Fatalf("create %s: %v", id, err)
+		}
+	}
+	first, err := s.ListTaskPlans(ctx, "proj-1", time.Time{}, "", 2)
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if len(first) != 2 || first[0].ID != "plan-a" || first[1].ID != "plan-b" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second, err := s.ListTaskPlans(ctx, "proj-1", first[1].CreatedAt, first[1].ID, 2)
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if len(second) != 1 || second[0].ID != "plan-c" {
+		t.Fatalf("second page = %+v", second)
+	}
+}
+
+func TestTaskGraphStore_MapsDuplicatePlanIdentity(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "proj-1")
+	seedProject(t, s, "proj-2")
+	plan := domain.TaskPlan{
+		ID: "same-id", ProjectID: "proj-1", Title: "First",
+		Tasks: []domain.PlannedTask{{ID: "t1", Title: "One", Prompt: "do it"}},
+	}
+	if _, err := s.CreateTaskPlan(ctx, plan, time.Now()); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	plan.ProjectID = "proj-2"
+	if _, err := s.CreateTaskPlan(ctx, plan, time.Now()); !errors.Is(err, domain.ErrDuplicateTaskPlan) {
+		t.Fatalf("duplicate error = %v, want ErrDuplicateTaskPlan", err)
+	}
+}
+
+func TestTaskGraphStore_RefusesMissingOrArchivedProjectAtomically(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	plan := domain.TaskPlan{
+		ID: "plan", ProjectID: "missing", Title: "Plan",
+		Tasks: []domain.PlannedTask{{ID: "t1", Title: "One", Prompt: "do it"}},
+	}
+	if _, err := s.CreateTaskPlan(ctx, plan, time.Now()); !errors.Is(err, domain.ErrTaskPlanProjectNotFound) {
+		t.Fatalf("missing project error = %v", err)
+	}
+
+	seedProject(t, s, "archived")
+	if ok, err := s.ArchiveProject(ctx, "archived", time.Now()); err != nil || !ok {
+		t.Fatalf("archive project: ok=%v err=%v", ok, err)
+	}
+	plan.ProjectID = "archived"
+	if _, err := s.CreateTaskPlan(ctx, plan, time.Now()); !errors.Is(err, domain.ErrTaskPlanProjectNotFound) {
+		t.Fatalf("archived project error = %v", err)
 	}
 }
 

@@ -13,8 +13,50 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 )
 
+const activeProjectForPlan = `-- name: ActiveProjectForPlan :one
+SELECT task_plan.project_id
+FROM task_plan
+JOIN projects ON projects.id = task_plan.project_id
+WHERE task_plan.id = ? AND projects.archived_at IS NULL
+`
+
+func (q *Queries) ActiveProjectForPlan(ctx context.Context, id string) (domain.ProjectID, error) {
+	row := q.db.QueryRowContext(ctx, activeProjectForPlan, id)
+	var project_id domain.ProjectID
+	err := row.Scan(&project_id)
+	return project_id, err
+}
+
+const bindTaskAttemptRuntime = `-- name: BindTaskAttemptRuntime :execrows
+UPDATE task_attempt
+SET runtime_ref = ?, session_id = ?, harness = ?, updated_at = ?
+WHERE id = ? AND state = 'claimed' AND (runtime_ref = '' OR runtime_ref = 'dispatching')
+`
+
+type BindTaskAttemptRuntimeParams struct {
+	RuntimeRef string
+	SessionID  *domain.SessionID
+	Harness    *domain.AgentHarness
+	UpdatedAt  time.Time
+	ID         string
+}
+
+func (q *Queries) BindTaskAttemptRuntime(ctx context.Context, arg BindTaskAttemptRuntimeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, bindTaskAttemptRuntime,
+		arg.RuntimeRef,
+		arg.SessionID,
+		arg.Harness,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getTask = `-- name: GetTask :one
-SELECT plan_id, id, phase_id, title, prompt, position, state, created_at, updated_at
+SELECT plan_id, id, phase_id, title, prompt, workspace_key, harness, position, state, created_at, updated_at
 FROM task
 WHERE plan_id = ? AND id = ?
 `
@@ -24,15 +66,31 @@ type GetTaskParams struct {
 	ID     string
 }
 
-func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) {
+type GetTaskRow struct {
+	PlanID       string
+	ID           string
+	PhaseID      sql.NullString
+	Title        string
+	Prompt       string
+	WorkspaceKey string
+	Harness      string
+	Position     int64
+	State        domain.TaskState
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, error) {
 	row := q.db.QueryRowContext(ctx, getTask, arg.PlanID, arg.ID)
-	var i Task
+	var i GetTaskRow
 	err := row.Scan(
 		&i.PlanID,
 		&i.ID,
 		&i.PhaseID,
 		&i.Title,
 		&i.Prompt,
+		&i.WorkspaceKey,
+		&i.Harness,
 		&i.Position,
 		&i.State,
 		&i.CreatedAt,
@@ -42,15 +100,31 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (Task, error) 
 }
 
 const getTaskAttempt = `-- name: GetTaskAttempt :one
-SELECT id, plan_id, task_id, attempt_number, state, session_id, harness,
+SELECT id, plan_id, task_id, attempt_number, state, session_id, harness, runtime_ref,
        claimed_at, started_at, finished_at, created_at, updated_at
 FROM task_attempt
 WHERE id = ?
 `
 
-func (q *Queries) GetTaskAttempt(ctx context.Context, id string) (TaskAttempt, error) {
+type GetTaskAttemptRow struct {
+	ID            string
+	PlanID        string
+	TaskID        string
+	AttemptNumber int64
+	State         domain.TaskAttemptState
+	SessionID     *domain.SessionID
+	Harness       *domain.AgentHarness
+	RuntimeRef    string
+	ClaimedAt     time.Time
+	StartedAt     sql.NullTime
+	FinishedAt    sql.NullTime
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) GetTaskAttempt(ctx context.Context, id string) (GetTaskAttemptRow, error) {
 	row := q.db.QueryRowContext(ctx, getTaskAttempt, id)
-	var i TaskAttempt
+	var i GetTaskAttemptRow
 	err := row.Scan(
 		&i.ID,
 		&i.PlanID,
@@ -59,6 +133,7 @@ func (q *Queries) GetTaskAttempt(ctx context.Context, id string) (TaskAttempt, e
 		&i.State,
 		&i.SessionID,
 		&i.Harness,
+		&i.RuntimeRef,
 		&i.ClaimedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
@@ -115,20 +190,23 @@ func (q *Queries) GetTaskResultByAttempt(ctx context.Context, attemptID string) 
 }
 
 const insertTask = `-- name: InsertTask :exec
-INSERT INTO task (plan_id, id, phase_id, title, prompt, position, state, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO task (
+    plan_id, id, phase_id, title, prompt, workspace_key, harness, position, state, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskParams struct {
-	PlanID    string
-	ID        string
-	PhaseID   sql.NullString
-	Title     string
-	Prompt    string
-	Position  int64
-	State     domain.TaskState
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	PlanID       string
+	ID           string
+	PhaseID      sql.NullString
+	Title        string
+	Prompt       string
+	WorkspaceKey string
+	Harness      string
+	Position     int64
+	State        domain.TaskState
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
@@ -138,6 +216,8 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.PhaseID,
 		arg.Title,
 		arg.Prompt,
+		arg.WorkspaceKey,
+		arg.Harness,
 		arg.Position,
 		arg.State,
 		arg.CreatedAt,
@@ -148,9 +228,9 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 
 const insertTaskAttempt = `-- name: InsertTaskAttempt :exec
 INSERT INTO task_attempt (
-    id, plan_id, task_id, attempt_number, state, session_id, harness,
+    id, plan_id, task_id, attempt_number, state, session_id, harness, runtime_ref,
     claimed_at, started_at, finished_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskAttemptParams struct {
@@ -161,6 +241,7 @@ type InsertTaskAttemptParams struct {
 	State         domain.TaskAttemptState
 	SessionID     *domain.SessionID
 	Harness       *domain.AgentHarness
+	RuntimeRef    string
 	ClaimedAt     time.Time
 	StartedAt     sql.NullTime
 	FinishedAt    sql.NullTime
@@ -177,6 +258,7 @@ func (q *Queries) InsertTaskAttempt(ctx context.Context, arg InsertTaskAttemptPa
 		arg.State,
 		arg.SessionID,
 		arg.Harness,
+		arg.RuntimeRef,
 		arg.ClaimedAt,
 		arg.StartedAt,
 		arg.FinishedAt,
@@ -230,18 +312,20 @@ func (q *Queries) InsertTaskPhase(ctx context.Context, arg InsertTaskPhaseParams
 	return err
 }
 
-const insertTaskPlan = `-- name: InsertTaskPlan :exec
+const insertTaskPlan = `-- name: InsertTaskPlan :execrows
 
 INSERT INTO task_plan (id, project_id, title, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
+SELECT ?1, projects.id, ?2, ?3, ?4
+FROM projects
+WHERE projects.id = ?5 AND projects.archived_at IS NULL
 `
 
 type InsertTaskPlanParams struct {
 	ID        string
-	ProjectID domain.ProjectID
 	Title     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	ProjectID domain.ProjectID
 }
 
 // Task-graph persistence (slice 2 of the durable task graph). Writes are
@@ -252,15 +336,18 @@ type InsertTaskPlanParams struct {
 //
 // Nothing here writes change_log. Task events are captured by the triggers in
 // migration 0129, and task_result is append-only at the schema level.
-func (q *Queries) InsertTaskPlan(ctx context.Context, arg InsertTaskPlanParams) error {
-	_, err := q.db.ExecContext(ctx, insertTaskPlan,
+func (q *Queries) InsertTaskPlan(ctx context.Context, arg InsertTaskPlanParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertTaskPlan,
 		arg.ID,
-		arg.ProjectID,
 		arg.Title,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ProjectID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const insertTaskResult = `-- name: InsertTaskResult :exec
@@ -315,8 +402,168 @@ func (q *Queries) InsertTaskVerificationCommand(ctx context.Context, arg InsertT
 	return err
 }
 
+const leaseTaskAttemptDispatch = `-- name: LeaseTaskAttemptDispatch :execrows
+UPDATE task_attempt
+SET runtime_ref = 'dispatching', updated_at = ?
+WHERE id = ? AND state = 'claimed' AND runtime_ref = ''
+`
+
+type LeaseTaskAttemptDispatchParams struct {
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) LeaseTaskAttemptDispatch(ctx context.Context, arg LeaseTaskAttemptDispatchParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, leaseTaskAttemptDispatch, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const listAllTaskPlans = `-- name: ListAllTaskPlans :many
+SELECT id, project_id, title, created_at, updated_at
+FROM task_plan
+ORDER BY created_at, id
+`
+
+func (q *Queries) ListAllTaskPlans(ctx context.Context) ([]TaskPlan, error) {
+	rows, err := q.db.QueryContext(ctx, listAllTaskPlans)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TaskPlan{}
+	for rows.Next() {
+		var i TaskPlan
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Title,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenTaskAttempts = `-- name: ListOpenTaskAttempts :many
+SELECT id, plan_id, task_id, attempt_number, state, session_id, harness, runtime_ref,
+       claimed_at, started_at, finished_at, created_at, updated_at
+FROM task_attempt
+WHERE state IN ('claimed', 'running', 'collecting', 'blocked')
+ORDER BY claimed_at, id
+`
+
+type ListOpenTaskAttemptsRow struct {
+	ID            string
+	PlanID        string
+	TaskID        string
+	AttemptNumber int64
+	State         domain.TaskAttemptState
+	SessionID     *domain.SessionID
+	Harness       *domain.AgentHarness
+	RuntimeRef    string
+	ClaimedAt     time.Time
+	StartedAt     sql.NullTime
+	FinishedAt    sql.NullTime
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) ListOpenTaskAttempts(ctx context.Context) ([]ListOpenTaskAttemptsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOpenTaskAttempts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenTaskAttemptsRow{}
+	for rows.Next() {
+		var i ListOpenTaskAttemptsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlanID,
+			&i.TaskID,
+			&i.AttemptNumber,
+			&i.State,
+			&i.SessionID,
+			&i.Harness,
+			&i.RuntimeRef,
+			&i.ClaimedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectActiveTasks = `-- name: ListProjectActiveTasks :many
+SELECT task.plan_id, task.id, task.state, task.workspace_key, task.harness
+FROM task
+JOIN task_plan ON task_plan.id = task.plan_id
+WHERE task_plan.project_id = ?
+  AND task.state IN ('claimed', 'running', 'collecting', 'blocked')
+`
+
+type ListProjectActiveTasksRow struct {
+	PlanID       string
+	ID           string
+	State        domain.TaskState
+	WorkspaceKey string
+	Harness      string
+}
+
+func (q *Queries) ListProjectActiveTasks(ctx context.Context, projectID domain.ProjectID) ([]ListProjectActiveTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectActiveTasks, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectActiveTasksRow{}
+	for rows.Next() {
+		var i ListProjectActiveTasksRow
+		if err := rows.Scan(
+			&i.PlanID,
+			&i.ID,
+			&i.State,
+			&i.WorkspaceKey,
+			&i.Harness,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaskAttempts = `-- name: ListTaskAttempts :many
-SELECT id, plan_id, task_id, attempt_number, state, session_id, harness,
+SELECT id, plan_id, task_id, attempt_number, state, session_id, harness, runtime_ref,
        claimed_at, started_at, finished_at, created_at, updated_at
 FROM task_attempt
 WHERE plan_id = ? AND task_id = ?
@@ -328,15 +575,31 @@ type ListTaskAttemptsParams struct {
 	TaskID string
 }
 
-func (q *Queries) ListTaskAttempts(ctx context.Context, arg ListTaskAttemptsParams) ([]TaskAttempt, error) {
+type ListTaskAttemptsRow struct {
+	ID            string
+	PlanID        string
+	TaskID        string
+	AttemptNumber int64
+	State         domain.TaskAttemptState
+	SessionID     *domain.SessionID
+	Harness       *domain.AgentHarness
+	RuntimeRef    string
+	ClaimedAt     time.Time
+	StartedAt     sql.NullTime
+	FinishedAt    sql.NullTime
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) ListTaskAttempts(ctx context.Context, arg ListTaskAttemptsParams) ([]ListTaskAttemptsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskAttempts, arg.PlanID, arg.TaskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []TaskAttempt{}
+	items := []ListTaskAttemptsRow{}
 	for rows.Next() {
-		var i TaskAttempt
+		var i ListTaskAttemptsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.PlanID,
@@ -345,6 +608,7 @@ func (q *Queries) ListTaskAttempts(ctx context.Context, arg ListTaskAttemptsPara
 			&i.State,
 			&i.SessionID,
 			&i.Harness,
+			&i.RuntimeRef,
 			&i.ClaimedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
@@ -434,15 +698,33 @@ func (q *Queries) ListTaskPhases(ctx context.Context, planID string) ([]TaskPhas
 	return items, nil
 }
 
-const listTaskPlans = `-- name: ListTaskPlans :many
+const listTaskPlansPage = `-- name: ListTaskPlansPage :many
 SELECT id, project_id, title, created_at, updated_at
 FROM task_plan
-WHERE project_id = ?
+WHERE project_id = ?1
+  AND (
+    CAST(?2 AS TEXT) = ''
+    OR created_at < ?3
+    OR (created_at = ?3 AND id > CAST(?2 AS TEXT))
+  )
 ORDER BY created_at DESC, id
+LIMIT ?4
 `
 
-func (q *Queries) ListTaskPlans(ctx context.Context, projectID domain.ProjectID) ([]TaskPlan, error) {
-	rows, err := q.db.QueryContext(ctx, listTaskPlans, projectID)
+type ListTaskPlansPageParams struct {
+	ProjectID       domain.ProjectID
+	BeforeID        string
+	BeforeCreatedAt time.Time
+	PageLimit       int64
+}
+
+func (q *Queries) ListTaskPlansPage(ctx context.Context, arg ListTaskPlansPageParams) ([]TaskPlan, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskPlansPage,
+		arg.ProjectID,
+		arg.BeforeID,
+		arg.BeforeCreatedAt,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -545,27 +827,43 @@ func (q *Queries) ListTaskVerificationCommands(ctx context.Context, planID strin
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT plan_id, id, phase_id, title, prompt, position, state, created_at, updated_at
+SELECT plan_id, id, phase_id, title, prompt, workspace_key, harness, position, state, created_at, updated_at
 FROM task
 WHERE plan_id = ?
 ORDER BY position
 `
 
-func (q *Queries) ListTasks(ctx context.Context, planID string) ([]Task, error) {
+type ListTasksRow struct {
+	PlanID       string
+	ID           string
+	PhaseID      sql.NullString
+	Title        string
+	Prompt       string
+	WorkspaceKey string
+	Harness      string
+	Position     int64
+	State        domain.TaskState
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (q *Queries) ListTasks(ctx context.Context, planID string) ([]ListTasksRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTasks, planID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Task{}
+	items := []ListTasksRow{}
 	for rows.Next() {
-		var i Task
+		var i ListTasksRow
 		if err := rows.Scan(
 			&i.PlanID,
 			&i.ID,
 			&i.PhaseID,
 			&i.Title,
 			&i.Prompt,
+			&i.WorkspaceKey,
+			&i.Harness,
 			&i.Position,
 			&i.State,
 			&i.CreatedAt,
@@ -641,15 +939,36 @@ func (q *Queries) NextTaskAttemptNumber(ctx context.Context, arg NextTaskAttempt
 	return attempt_number, err
 }
 
+const releaseTaskAttemptDispatch = `-- name: ReleaseTaskAttemptDispatch :execrows
+UPDATE task_attempt
+SET runtime_ref = '', updated_at = ?
+WHERE id = ? AND state = 'claimed' AND runtime_ref = 'dispatching'
+`
+
+type ReleaseTaskAttemptDispatchParams struct {
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) ReleaseTaskAttemptDispatch(ctx context.Context, arg ReleaseTaskAttemptDispatchParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, releaseTaskAttemptDispatch, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const transitionTaskAttempt = `-- name: TransitionTaskAttempt :execrows
 UPDATE task_attempt
-SET state = ?, session_id = ?, started_at = ?, finished_at = ?, updated_at = ?
+SET state = ?, session_id = ?, harness = ?, runtime_ref = ?, started_at = ?, finished_at = ?, updated_at = ?
 WHERE id = ? AND state = ?
 `
 
 type TransitionTaskAttemptParams struct {
 	State      domain.TaskAttemptState
 	SessionID  *domain.SessionID
+	Harness    *domain.AgentHarness
+	RuntimeRef string
 	StartedAt  sql.NullTime
 	FinishedAt sql.NullTime
 	UpdatedAt  time.Time
@@ -661,6 +980,8 @@ func (q *Queries) TransitionTaskAttempt(ctx context.Context, arg TransitionTaskA
 	result, err := q.db.ExecContext(ctx, transitionTaskAttempt,
 		arg.State,
 		arg.SessionID,
+		arg.Harness,
+		arg.RuntimeRef,
 		arg.StartedAt,
 		arg.FinishedAt,
 		arg.UpdatedAt,

@@ -58,6 +58,8 @@ import (
 	settingssvc "github.com/aoagents/agent-orchestrator/backend/internal/service/settings"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systemcheck"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systeminstall"
+	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 	usagesvc "github.com/aoagents/agent-orchestrator/backend/internal/service/usage"
 	"github.com/aoagents/agent-orchestrator/backend/internal/skillassets"
 	"github.com/aoagents/agent-orchestrator/backend/internal/storage/sqlite"
@@ -517,6 +519,8 @@ func Run() error {
 	lcStack.LCM.SetSessionOperationGate(sessMgr)
 	termMgr.SetSessionInputLease(sessMgr)
 	projectSvc := projectsvc.NewWithDeps(projectsvc.Deps{Store: store, Sessions: sessionSvc, DefaultHarness: domain.AgentHarness(cfg.Agent), Telemetry: telemetrySink, Logger: log})
+	taskPlanSvc := taskplansvc.New(store)
+	taskScheduler := tasksched.New(store, tasksched.NewMemoryLauncher(), tasksched.ExecVerifier{})
 	if err := seedScratchProjectOnBoot(ctx, cfg, projectSvc); err != nil {
 		stop()
 		lcStack.Stop()
@@ -746,6 +750,9 @@ func Run() error {
 
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:           projectSvc,
+		TaskPlans:          taskPlanSvc,
+		TaskSchedule:       taskScheduler,
+		TaskRecovery:       taskScheduler,
 		HostID:             hostIdentity.HostID,
 		Endpoints:          bs,
 		Agents:             agentSvc,
@@ -857,6 +864,13 @@ func Run() error {
 		startupReconcileDone = done
 		go func() {
 			defer close(done)
+			go func() {
+				// Run recovers before it claims anything. A failed recovery
+				// leaves /readyz pending and does not start dispatch.
+				if err := taskScheduler.Run(ctx); err != nil && ctx.Err() == nil {
+					log.Error("task schedule recovery failed; dispatch stays closed", "err", err)
+				}
+			}()
 			if reconcileErr := reconcilePersistentChatHosts(ctx, cfg.DataDir, store); reconcileErr != nil {
 				log.Error("persistent chat host reconciliation on boot failed", "err", reconcileErr)
 			}

@@ -1,8 +1,17 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+)
+
+// ErrDuplicateTaskPlan is returned when a plan identity is already durable.
+// Plan IDs are globally stable because later attempt and result records carry
+// them without a separate project key.
+var (
+	ErrDuplicateTaskPlan       = errors.New("domain: task plan already exists")
+	ErrTaskPlanProjectNotFound = errors.New("domain: active task plan project not found")
 )
 
 // TaskPlan is a proposed task graph for one project.
@@ -29,6 +38,14 @@ type PlannedTask struct {
 	Prompt               string
 	DependsOn            []string
 	VerificationCommands []string
+	// WorkspaceKey is an opaque isolation key. Empty means the shared project
+	// workspace, so two such tasks cannot be claimed together. Distinct keys
+	// may run concurrently when the schedule limits allow it. The key is not a
+	// filesystem path.
+	WorkspaceKey string
+	// Harness is the preferred worker harness. Empty shares the unspecified
+	// harness concurrency bucket. Dispatch chooses the concrete runtime.
+	Harness string
 }
 
 // Validate checks the task graph without consulting persistence or runtime state.
@@ -96,6 +113,26 @@ func (p TaskPlan) Validate() error {
 		}
 		if _, exists := tasks[task.ID]; exists {
 			return fmt.Errorf("task[%d].id %q is duplicated", i, task.ID)
+		}
+		if task.WorkspaceKey != strings.TrimSpace(task.WorkspaceKey) {
+			return fmt.Errorf("task[%d].workspaceKey must not have leading or trailing whitespace", i)
+		}
+		if strings.ContainsAny(task.WorkspaceKey, "/\\") || strings.Contains(task.WorkspaceKey, "..") {
+			return fmt.Errorf("task[%d].workspaceKey must be an opaque isolation key", i)
+		}
+		if len(task.WorkspaceKey) > 128 {
+			return fmt.Errorf("task[%d].workspaceKey exceeds 128 bytes", i)
+		}
+		if task.Harness != "" {
+			if task.Harness != strings.TrimSpace(task.Harness) {
+				return fmt.Errorf("task[%d].harness must not have leading or trailing whitespace", i)
+			}
+			if len(task.Harness) > 64 {
+				return fmt.Errorf("task[%d].harness exceeds 64 bytes", i)
+			}
+			if !AgentHarness(task.Harness).IsKnown() {
+				return fmt.Errorf("task[%d].harness %q is unknown", i, task.Harness)
+			}
 		}
 		tasks[task.ID] = i
 		for j, command := range task.VerificationCommands {

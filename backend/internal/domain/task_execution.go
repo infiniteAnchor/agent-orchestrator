@@ -203,11 +203,15 @@ type TaskAttempt struct {
 	State         TaskAttemptState
 	SessionID     string
 	Harness       AgentHarness
-	ClaimedAt     time.Time
-	StartedAt     *time.Time
-	FinishedAt    *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// RuntimeRef is the launcher's opaque worker identity. Empty until dispatch
+	// begins. TaskAttemptDispatchLease means a launch was attempted and the
+	// real identity is not durable yet. It must never be a host path.
+	RuntimeRef string
+	ClaimedAt  time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Validate checks an attempt record without consulting persistence.
@@ -233,11 +237,30 @@ func (a TaskAttempt) Validate() error {
 	if a.SessionID != strings.TrimSpace(a.SessionID) {
 		return fmt.Errorf("task attempt session ID must not have leading or trailing whitespace")
 	}
+	if err := ValidateRuntimeRef(a.RuntimeRef); err != nil {
+		return err
+	}
 	if a.ClaimedAt.IsZero() {
 		return fmt.Errorf("task attempt claimed-at is required")
 	}
 	if a.FinishedAt != nil && a.StartedAt == nil {
 		return fmt.Errorf("task attempt cannot finish before it started")
+	}
+	return nil
+}
+
+// ValidateRuntimeRef accepts an empty ref, the dispatch lease, or an opaque
+// identifier. Slashes and parent-directory segments are rejected so a launcher
+// cannot persist a host path as a worker identity.
+func ValidateRuntimeRef(ref string) error {
+	if ref == "" || ref == TaskAttemptDispatchLease {
+		return nil
+	}
+	if ref != strings.TrimSpace(ref) {
+		return fmt.Errorf("task attempt runtime ref must not have leading or trailing whitespace")
+	}
+	if strings.ContainsAny(ref, "/\\") || strings.Contains(ref, "..") || len(ref) > 128 {
+		return fmt.Errorf("task attempt runtime ref must be an opaque identifier")
 	}
 	return nil
 }

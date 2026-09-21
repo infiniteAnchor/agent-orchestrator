@@ -505,10 +505,12 @@ Mobile, and harness installs.
 
 ### Phase 3: durable task graph
 
-**Phase 3 status: started with the graph contract and validation slice.**
-See the [execution plan](plans/phase-3-durable-task-graph.md) for the ordered
-implementation and acceptance criteria. Persistence, API operations, dispatch,
-and crash recovery remain pending; this is not yet a runtime scheduler.
+**Phase 3 status: graph, persistence, schedule, dispatch, and recovery complete.**
+See the [execution plan](plans/phase-3-durable-task-graph.md) and the
+[contract index](plans/phase-3-contract-index.md). The scheduler derives
+readiness from verified results, claims one attempt before launch, and holds
+an attempt when the launcher cannot tell whether a worker started. Planner
+automation remains Phase 4.
 
 - Persist plans, phases, dependencies, attempts, and task results.
 - Add graph validation and a bounded ready-queue scheduler.

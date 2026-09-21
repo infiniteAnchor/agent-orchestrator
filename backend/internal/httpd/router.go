@@ -77,7 +77,7 @@ func NewRouterWithControl(cfg config.Config, log *slog.Logger, termMgr *terminal
 	r.NotFound(notFoundJSON)
 	r.MethodNotAllowed(methodNotAllowedJSON)
 
-	mountHealth(r, cfg)
+	mountHealth(r, cfg, deps.TaskRecovery)
 	mountTerminalMux(r, termMgr, log, cfg.AllowedOrigins)
 	mountControl(r, control)
 	mountAgentSwitchPolicyControl(r, control.AgentSwitchPolicy)
@@ -158,14 +158,37 @@ func previewOriginMiddleware(sessions *controllers.SessionsController) func(http
 	}
 }
 
+// TaskRecoveryGate reports whether startup task reconciliation has finished.
+// Dispatch stays closed until it has. /healthz does not consult the gate.
+type TaskRecoveryGate interface {
+	Ready() bool
+}
+
 // mountHealth registers the liveness and readiness probes the Electron
 // supervisor polls before letting the renderer connect.
-func mountHealth(r chi.Router, cfg config.Config) {
+//
+// /healthz is liveness: the process is listening. /readyz is ready only when
+// task recovery is finished, so a client that waits for HTTP 200 cannot
+// observe a duplicate dispatch while ambiguous attempts are still being held.
+// A nil gate means this process has no task scheduler; the probe then reports
+// taskRecovery=complete. Chat-host and session reconciliation stay in the
+// background and do not change this status.
+func mountHealth(r chi.Router, cfg config.Config, recovery TaskRecoveryGate) {
 	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		envelope.WriteJSON(w, http.StatusOK, daemonProbePayload("ok", cfg, req))
 	})
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
-		envelope.WriteJSON(w, http.StatusOK, daemonProbePayload("ready", cfg, req))
+		status := "ready"
+		code := http.StatusOK
+		taskRecovery := "complete"
+		if recovery != nil && !recovery.Ready() {
+			status = "task_recovery_pending"
+			code = http.StatusServiceUnavailable
+			taskRecovery = "pending"
+		}
+		payload := daemonProbePayload(status, cfg, req)
+		payload["taskRecovery"] = taskRecovery
+		envelope.WriteJSON(w, code, payload)
 	})
 }
 
