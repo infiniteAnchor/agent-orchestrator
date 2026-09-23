@@ -659,6 +659,23 @@ type TaskPlan struct {
 	UpdatedAt time.Time
 }
 
+type TaskPlanProposal struct {
+	ID             string
+	ProjectID      string
+	RequestKey     string
+	Specification  string
+	Status         string
+	OrchestratorID string
+	TurnID         string
+	GraphJson      string
+	ErrorCode      string
+	ErrorMessage   string
+	AcceptedAt     sql.NullString
+	RejectedAt     sql.NullString
+	CreatedAt      string
+	UpdatedAt      string
+}
+
 type TaskResult struct {
 	ID         string
 	PlanID     string

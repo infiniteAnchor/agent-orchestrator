@@ -93,6 +93,45 @@ type TaskPlanEnvelope struct {
 	TaskPlan TaskPlanResponse `json:"taskPlan"`
 }
 
+// CreateTaskPlanProposalInput requests a durable planner draft.
+type CreateTaskPlanProposalInput struct {
+	RequestKey    string `json:"requestKey" maxLength:"128"`
+	Specification string `json:"specification" maxLength:"32768"`
+}
+
+// TaskPlanProposalResponse is the reviewable state of one planner draft.
+type TaskPlanProposalResponse struct {
+	ID           string            `json:"id"`
+	ProjectID    domain.ProjectID  `json:"projectId"`
+	Status       string            `json:"status" enum:"queued,generating,ready,invalid,failed,accepted,rejected"`
+	TaskPlan     *TaskPlanResponse `json:"taskPlan,omitempty"`
+	TaskPlanID   string            `json:"taskPlanId,omitempty"`
+	ErrorCode    string            `json:"errorCode,omitempty"`
+	ErrorMessage string            `json:"errorMessage,omitempty"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	UpdatedAt    time.Time         `json:"updatedAt"`
+}
+
+// TaskPlanProposalEnvelope wraps one planner draft.
+type TaskPlanProposalEnvelope struct {
+	Proposal TaskPlanProposalResponse `json:"proposal"`
+}
+
+// ListTaskPlanProposalsResponse is a bounded newest-first page of drafts.
+type ListTaskPlanProposalsResponse struct {
+	Proposals []TaskPlanProposalResponse `json:"proposals"`
+}
+
+// ListTaskPlanProposalsQuery selects a bounded proposal list page.
+type ListTaskPlanProposalsQuery struct {
+	Limit *int `query:"limit,omitempty" description:"Maximum number of proposals to return (1-100)." minimum:"1" maximum:"100"`
+}
+
+// TaskPlanProposalIDParam is the {proposalId} path parameter.
+type TaskPlanProposalIDParam struct {
+	ProposalID string `path:"proposalId" description:"Opaque planner proposal identifier."`
+}
+
 // TaskPlanSummaryEnvelope wraps one task-plan summary.
 type TaskPlanSummaryEnvelope struct {
 	TaskPlan TaskPlanSummaryResponse `json:"taskPlan"`
@@ -107,10 +146,10 @@ type ListTaskPlansResponse struct {
 // TaskScheduleResponse is the remote-safe ready queue. It omits prompts,
 // verification commands, command output, and host paths.
 type TaskScheduleResponse struct {
-	Recovery     string                    `json:"recovery"`
-	ReadyTaskIDs []string                  `json:"readyTaskIds"`
-	Tasks        []TaskScheduleTask        `json:"tasks"`
-	Attempts     []TaskScheduleAttempt     `json:"attempts"`
+	Recovery     string                `json:"recovery"`
+	ReadyTaskIDs []string              `json:"readyTaskIds"`
+	Tasks        []TaskScheduleTask    `json:"tasks"`
+	Attempts     []TaskScheduleAttempt `json:"attempts"`
 }
 
 // TaskScheduleTask is one task's durable state and derived readiness.

@@ -30,7 +30,7 @@ Start with [architecture.md](architecture.md) for the current backend model and
 
 Headless Phases 1, 2, and 3 are complete. Phase 3's contracts are indexed in
 [phase-3-contract-index.md](plans/phase-3-contract-index.md). Phase 4 is
-planner automation.
+planner automation; see its [execution plan](plans/phase-4-orchestrator-automation.md).
 
 ## Mental model
 

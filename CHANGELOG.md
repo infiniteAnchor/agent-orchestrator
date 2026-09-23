@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026-09-22]
+
+### Added
+
+- Project-scoped planner proposals with durable Chat-turn recovery, bounded
+  graph validation, explicit accept/reject operations, and atomic acceptance
+  into the task-plan scheduler without automatic dispatch.
+
 ## [2026-09-21]
 
 ### Added

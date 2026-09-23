@@ -520,6 +520,7 @@ func Run() error {
 	termMgr.SetSessionInputLease(sessMgr)
 	projectSvc := projectsvc.NewWithDeps(projectsvc.Deps{Store: store, Sessions: sessionSvc, DefaultHarness: domain.AgentHarness(cfg.Agent), Telemetry: telemetrySink, Logger: log})
 	taskPlanSvc := taskplansvc.New(store)
+	taskProposalSvc := taskplansvc.NewProposalService(store, sessionSvc, chatSvc)
 	taskScheduler := tasksched.New(store, tasksched.NewMemoryLauncher(), tasksched.ExecVerifier{})
 	if err := seedScratchProjectOnBoot(ctx, cfg, projectSvc); err != nil {
 		stop()
@@ -751,6 +752,7 @@ func Run() error {
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:           projectSvc,
 		TaskPlans:          taskPlanSvc,
+		TaskProposals:      taskProposalSvc,
 		TaskSchedule:       taskScheduler,
 		TaskRecovery:       taskScheduler,
 		HostID:             hostIdentity.HostID,
@@ -879,6 +881,9 @@ func Run() error {
 			}
 			if reconcileErr := lcStack.ReconcileRuntime(ctx); reconcileErr != nil {
 				log.Error("background agent-process reconciliation on boot failed", "err", reconcileErr)
+			}
+			if reconcileErr := taskProposalSvc.Recover(ctx); reconcileErr != nil {
+				log.Error("task plan proposal recovery failed", "err", reconcileErr)
 			}
 		}()
 	})

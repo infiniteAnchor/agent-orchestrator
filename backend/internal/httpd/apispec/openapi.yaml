@@ -2232,6 +2232,279 @@ paths:
       summary: Remember project permissions for future sessions
       tags:
       - projects
+  /api/v1/projects/{id}/task-plan-proposals:
+    get:
+      operationId: listTaskPlanProposals
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Maximum number of proposals to return (1-100).
+        in: query
+        name: limit
+        schema:
+          description: Maximum number of proposals to return (1-100).
+          maximum: 100
+          minimum: 1
+          type:
+          - "null"
+          - integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTaskPlanProposalsResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List durable planner proposals for a project
+      tags:
+      - task-plans
+    post:
+      operationId: createTaskPlanProposal
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskPlanProposalInput'
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPlanProposalEnvelope'
+          description: Accepted
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Request Entity Too Large
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Ask the project orchestrator to prepare a reviewable task plan proposal
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plan-proposals/{proposalId}:
+    get:
+      operationId: getTaskPlanProposal
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Opaque planner proposal identifier.
+        in: path
+        name: proposalId
+        required: true
+        schema:
+          description: Opaque planner proposal identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPlanProposalEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Fetch a planner proposal for review
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plan-proposals/{proposalId}/accept:
+    post:
+      operationId: acceptTaskPlanProposal
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Opaque planner proposal identifier.
+        in: path
+        name: proposalId
+        required: true
+        schema:
+          description: Opaque planner proposal identifier.
+          type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPlanSummaryEnvelope'
+          description: Created
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Accept a proposal as a durable task plan without dispatching it
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plan-proposals/{proposalId}/reject:
+    post:
+      operationId: rejectTaskPlanProposal
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Opaque planner proposal identifier.
+        in: path
+        name: proposalId
+        required: true
+        schema:
+          description: Opaque planner proposal identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPlanProposalEnvelope'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Reject a planner proposal
+      tags:
+      - task-plans
   /api/v1/projects/{id}/task-plans:
     get:
       operationId: listTaskPlans
@@ -9185,6 +9458,18 @@ components:
       - title
       - tasks
       type: object
+    CreateTaskPlanProposalInput:
+      properties:
+        requestKey:
+          maxLength: 128
+          type: string
+        specification:
+          maxLength: 32768
+          type: string
+      required:
+      - requestKey
+      - specification
+      type: object
     DegradedProject:
       properties:
         id:
@@ -9947,6 +10232,15 @@ components:
           type: array
       required:
       - shellTerminals
+      type: object
+    ListTaskPlanProposalsResponse:
+      properties:
+        proposals:
+          items:
+            $ref: '#/components/schemas/TaskPlanProposal'
+          type: array
+      required:
+      - proposals
       type: object
     ListTaskPlansResponse:
       properties:
@@ -12121,6 +12415,50 @@ components:
       required:
       - id
       - title
+      type: object
+    TaskPlanProposal:
+      properties:
+        createdAt:
+          format: date-time
+          type: string
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+        id:
+          type: string
+        projectId:
+          type: string
+        status:
+          enum:
+          - queued
+          - generating
+          - ready
+          - invalid
+          - failed
+          - accepted
+          - rejected
+          type: string
+        taskPlan:
+          $ref: '#/components/schemas/TaskPlan'
+        taskPlanId:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - id
+      - projectId
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    TaskPlanProposalEnvelope:
+      properties:
+        proposal:
+          $ref: '#/components/schemas/TaskPlanProposal'
+      required:
+      - proposal
       type: object
     TaskPlanSummary:
       properties:

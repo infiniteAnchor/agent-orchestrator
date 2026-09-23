@@ -122,6 +122,59 @@ SELECT id, project_id, title, created_at, updated_at
 FROM task_plan
 ORDER BY created_at, id;
 
+-- name: InsertTaskPlanProposal :execrows
+INSERT INTO task_plan_proposal (
+    id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+    graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+) SELECT sqlc.arg(id), projects.id, sqlc.arg(request_key), sqlc.arg(specification),
+         sqlc.arg(status), '', '', '', '', '', NULL, NULL, sqlc.arg(created_at), sqlc.arg(updated_at)
+FROM projects
+WHERE projects.id = sqlc.arg(project_id) AND projects.archived_at IS NULL
+ON CONFLICT(project_id, request_key) DO NOTHING;
+
+-- name: GetTaskPlanProposalByRequest :one
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE project_id = ? AND request_key = ?;
+
+-- name: GetTaskPlanProposal :one
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE project_id = ? AND id = ?;
+
+-- name: ListTaskPlanProposals :many
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE project_id = ?
+ORDER BY created_at DESC, id
+LIMIT ?;
+
+-- name: SetTaskPlanProposalState :execrows
+UPDATE task_plan_proposal
+SET status = ?, orchestrator_id = ?, turn_id = ?, graph_json = ?,
+    error_code = ?, error_message = ?, accepted_at = ?, rejected_at = ?, updated_at = ?
+WHERE id = ? AND project_id = ? AND status = ?;
+
+-- name: ListPendingTaskPlanProposals :many
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE status IN ('queued', 'generating')
+ORDER BY created_at, id;
+
+-- name: AcceptTaskPlanProposal :execrows
+UPDATE task_plan_proposal
+SET status = 'accepted', accepted_at = ?, updated_at = ?
+WHERE id = ? AND project_id = ? AND status = 'ready';
+
+-- name: RejectTaskPlanProposal :execrows
+UPDATE task_plan_proposal
+SET status = 'rejected', rejected_at = ?, updated_at = ?
+WHERE id = ? AND project_id = ? AND status IN ('ready', 'invalid', 'failed');
+
 -- name: ActiveProjectForPlan :one
 SELECT task_plan.project_id
 FROM task_plan

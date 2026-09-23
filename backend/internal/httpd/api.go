@@ -28,6 +28,7 @@ type APIDeps struct {
 	CodexAccounts controllers.CodexAccountService
 	Projects      projectsvc.Manager
 	TaskPlans     taskplansvc.Manager
+	TaskProposals taskplansvc.ProposalManager
 	TaskSchedule  tasksched.API
 	// TaskRecovery gates /readyz. Nil means task recovery is not part of this
 	// process, so the probe stays "listening and ready".
@@ -114,6 +115,7 @@ type API struct {
 	codexAccounts *controllers.CodexAccountsController
 	projects      *controllers.ProjectsController
 	taskPlans     *controllers.TaskPlansController
+	taskProposals *controllers.TaskPlanProposalsController
 	sessions      *controllers.SessionsController
 	desktop       *controllers.DesktopWorkspaceController
 	usage         *controllers.UsageController
@@ -150,7 +152,8 @@ func NewAPI(cfg config.Config, deps APIDeps) *API {
 		projects: &controllers.ProjectsController{
 			Mgr: deps.Projects,
 		},
-		taskPlans: &controllers.TaskPlansController{Svc: deps.TaskPlans, Schedule: deps.TaskSchedule},
+		taskPlans:     &controllers.TaskPlansController{Svc: deps.TaskPlans, Schedule: deps.TaskSchedule},
+		taskProposals: &controllers.TaskPlanProposalsController{Svc: deps.TaskProposals},
 		sessions: &controllers.SessionsController{
 			Svc:           deps.Sessions,
 			Activity:      deps.Activity,
@@ -199,6 +202,7 @@ func (a *API) Register(root chi.Router) {
 			a.codexAccounts.Register(r)
 			a.projects.Register(r)
 			a.taskPlans.Register(r)
+			a.taskProposals.Register(r)
 			a.sessions.Register(r)
 			a.desktop.Register(r)
 			a.usage.Register(r)

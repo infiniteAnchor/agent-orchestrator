@@ -48,81 +48,7 @@ func (s *Store) CreateTaskPlan(ctx context.Context, plan domain.TaskPlan, now ti
 	defer s.writeMu.Unlock()
 
 	err := s.inTx(ctx, "create task plan", func(q *gen.Queries) error {
-		inserted, err := q.InsertTaskPlan(ctx, gen.InsertTaskPlanParams{
-			ID:        plan.ID,
-			ProjectID: domain.ProjectID(plan.ProjectID),
-			Title:     plan.Title,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-		if err != nil {
-			return fmt.Errorf("insert task plan %s: %w", plan.ID, err)
-		}
-		if inserted == 0 {
-			return fmt.Errorf("insert task plan %s: %w", plan.ID, domain.ErrTaskPlanProjectNotFound)
-		}
-
-		for i, phase := range plan.Phases {
-			if err := q.InsertTaskPhase(ctx, gen.InsertTaskPhaseParams{
-				PlanID:   plan.ID,
-				ID:       phase.ID,
-				Title:    phase.Title,
-				Position: int64(i),
-			}); err != nil {
-				return fmt.Errorf("insert task phase %s: %w", phase.ID, err)
-			}
-		}
-
-		// Tasks are inserted in a first pass, and edges and commands in a second.
-		// A plan is explicitly allowed to declare a task before the tasks it
-		// depends on ("out-of-order DAGs" in the Phase 3 plan), and the composite
-		// FK from task_dependency to task would reject the edge if the target row
-		// did not exist yet.
-		for i, task := range plan.Tasks {
-			var phaseID sql.NullString
-			if task.PhaseID != "" {
-				phaseID = sql.NullString{String: task.PhaseID, Valid: true}
-			}
-			if err := q.InsertTask(ctx, gen.InsertTaskParams{
-				PlanID:       plan.ID,
-				ID:           task.ID,
-				PhaseID:      phaseID,
-				Title:        task.Title,
-				Prompt:       task.Prompt,
-				WorkspaceKey: task.WorkspaceKey,
-				Harness:      task.Harness,
-				Position:     int64(i),
-				State:        domain.TaskStateQueued,
-				CreatedAt:    now,
-				UpdatedAt:    now,
-			}); err != nil {
-				return fmt.Errorf("insert task %s: %w", task.ID, err)
-			}
-		}
-
-		for _, task := range plan.Tasks {
-			for j, dependency := range task.DependsOn {
-				if err := q.InsertTaskDependency(ctx, gen.InsertTaskDependencyParams{
-					PlanID:          plan.ID,
-					TaskID:          task.ID,
-					DependsOnTaskID: dependency,
-					Position:        int64(j),
-				}); err != nil {
-					return fmt.Errorf("insert task %s dependency %s: %w", task.ID, dependency, err)
-				}
-			}
-			for j, command := range task.VerificationCommands {
-				if err := q.InsertTaskVerificationCommand(ctx, gen.InsertTaskVerificationCommandParams{
-					PlanID:   plan.ID,
-					TaskID:   task.ID,
-					Position: int64(j),
-					Command:  command,
-				}); err != nil {
-					return fmt.Errorf("insert task %s verification command %d: %w", task.ID, j, err)
-				}
-			}
-		}
-		return nil
+		return s.insertTaskPlan(ctx, q, plan, now)
 	})
 	if err != nil {
 		if isSQLiteUnique(err) || isSQLitePrimaryKey(err) {
@@ -137,6 +63,50 @@ func (s *Store) CreateTaskPlan(ctx context.Context, plan domain.TaskPlan, now ti
 		CreatedAt: now,
 		UpdatedAt: now,
 	}, nil
+}
+
+func (s *Store) insertTaskPlan(ctx context.Context, q *gen.Queries, plan domain.TaskPlan, now time.Time) error {
+	inserted, err := q.InsertTaskPlan(ctx, gen.InsertTaskPlanParams{
+		ID: plan.ID, ProjectID: domain.ProjectID(plan.ProjectID), Title: plan.Title,
+		CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		return fmt.Errorf("insert task plan %s: %w", plan.ID, err)
+	}
+	if inserted == 0 {
+		return fmt.Errorf("insert task plan %s: %w", plan.ID, domain.ErrTaskPlanProjectNotFound)
+	}
+	for i, phase := range plan.Phases {
+		if err := q.InsertTaskPhase(ctx, gen.InsertTaskPhaseParams{PlanID: plan.ID, ID: phase.ID, Title: phase.Title, Position: int64(i)}); err != nil {
+			return fmt.Errorf("insert task phase %s: %w", phase.ID, err)
+		}
+	}
+	for i, task := range plan.Tasks {
+		var phaseID sql.NullString
+		if task.PhaseID != "" {
+			phaseID = sql.NullString{String: task.PhaseID, Valid: true}
+		}
+		if err := q.InsertTask(ctx, gen.InsertTaskParams{
+			PlanID: plan.ID, ID: task.ID, PhaseID: phaseID, Title: task.Title, Prompt: task.Prompt,
+			WorkspaceKey: task.WorkspaceKey, Harness: task.Harness, Position: int64(i),
+			State: domain.TaskStateQueued, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("insert task %s: %w", task.ID, err)
+		}
+	}
+	for _, task := range plan.Tasks {
+		for j, dependency := range task.DependsOn {
+			if err := q.InsertTaskDependency(ctx, gen.InsertTaskDependencyParams{PlanID: plan.ID, TaskID: task.ID, DependsOnTaskID: dependency, Position: int64(j)}); err != nil {
+				return fmt.Errorf("insert task %s dependency %s: %w", task.ID, dependency, err)
+			}
+		}
+		for j, command := range task.VerificationCommands {
+			if err := q.InsertTaskVerificationCommand(ctx, gen.InsertTaskVerificationCommandParams{PlanID: plan.ID, TaskID: task.ID, Position: int64(j), Command: command}); err != nil {
+				return fmt.Errorf("insert task %s verification command %d: %w", task.ID, j, err)
+			}
+		}
+	}
+	return nil
 }
 
 // GetTaskPlan returns one stored plan's full graph, ok=false if the plan does

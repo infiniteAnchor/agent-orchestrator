@@ -13,6 +13,32 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 )
 
+const acceptTaskPlanProposal = `-- name: AcceptTaskPlanProposal :execrows
+UPDATE task_plan_proposal
+SET status = 'accepted', accepted_at = ?, updated_at = ?
+WHERE id = ? AND project_id = ? AND status = 'ready'
+`
+
+type AcceptTaskPlanProposalParams struct {
+	AcceptedAt sql.NullString
+	UpdatedAt  string
+	ID         string
+	ProjectID  string
+}
+
+func (q *Queries) AcceptTaskPlanProposal(ctx context.Context, arg AcceptTaskPlanProposalParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, acceptTaskPlanProposal,
+		arg.AcceptedAt,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ProjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const activeProjectForPlan = `-- name: ActiveProjectForPlan :one
 SELECT task_plan.project_id
 FROM task_plan
@@ -161,6 +187,74 @@ func (q *Queries) GetTaskPlan(ctx context.Context, arg GetTaskPlanParams) (TaskP
 		&i.ID,
 		&i.ProjectID,
 		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTaskPlanProposal = `-- name: GetTaskPlanProposal :one
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE project_id = ? AND id = ?
+`
+
+type GetTaskPlanProposalParams struct {
+	ProjectID string
+	ID        string
+}
+
+func (q *Queries) GetTaskPlanProposal(ctx context.Context, arg GetTaskPlanProposalParams) (TaskPlanProposal, error) {
+	row := q.db.QueryRowContext(ctx, getTaskPlanProposal, arg.ProjectID, arg.ID)
+	var i TaskPlanProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.RequestKey,
+		&i.Specification,
+		&i.Status,
+		&i.OrchestratorID,
+		&i.TurnID,
+		&i.GraphJson,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.AcceptedAt,
+		&i.RejectedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTaskPlanProposalByRequest = `-- name: GetTaskPlanProposalByRequest :one
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE project_id = ? AND request_key = ?
+`
+
+type GetTaskPlanProposalByRequestParams struct {
+	ProjectID  string
+	RequestKey string
+}
+
+func (q *Queries) GetTaskPlanProposalByRequest(ctx context.Context, arg GetTaskPlanProposalByRequestParams) (TaskPlanProposal, error) {
+	row := q.db.QueryRowContext(ctx, getTaskPlanProposalByRequest, arg.ProjectID, arg.RequestKey)
+	var i TaskPlanProposal
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.RequestKey,
+		&i.Specification,
+		&i.Status,
+		&i.OrchestratorID,
+		&i.TurnID,
+		&i.GraphJson,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.AcceptedAt,
+		&i.RejectedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -350,6 +444,43 @@ func (q *Queries) InsertTaskPlan(ctx context.Context, arg InsertTaskPlanParams) 
 	return result.RowsAffected()
 }
 
+const insertTaskPlanProposal = `-- name: InsertTaskPlanProposal :execrows
+INSERT INTO task_plan_proposal (
+    id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+    graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+) SELECT ?1, projects.id, ?2, ?3,
+         ?4, '', '', '', '', '', NULL, NULL, ?5, ?6
+FROM projects
+WHERE projects.id = ?7 AND projects.archived_at IS NULL
+ON CONFLICT(project_id, request_key) DO NOTHING
+`
+
+type InsertTaskPlanProposalParams struct {
+	ID            string
+	RequestKey    string
+	Specification string
+	Status        string
+	CreatedAt     string
+	UpdatedAt     string
+	ProjectID     domain.ProjectID
+}
+
+func (q *Queries) InsertTaskPlanProposal(ctx context.Context, arg InsertTaskPlanProposalParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertTaskPlanProposal,
+		arg.ID,
+		arg.RequestKey,
+		arg.Specification,
+		arg.Status,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ProjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const insertTaskResult = `-- name: InsertTaskResult :exec
 INSERT INTO task_result (id, plan_id, task_id, attempt_id, outcome, summary, evidence, recorded_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -501,6 +632,52 @@ func (q *Queries) ListOpenTaskAttempts(ctx context.Context) ([]ListOpenTaskAttem
 			&i.ClaimedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingTaskPlanProposals = `-- name: ListPendingTaskPlanProposals :many
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE status IN ('queued', 'generating')
+ORDER BY created_at, id
+`
+
+func (q *Queries) ListPendingTaskPlanProposals(ctx context.Context) ([]TaskPlanProposal, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingTaskPlanProposals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TaskPlanProposal{}
+	for rows.Next() {
+		var i TaskPlanProposal
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.RequestKey,
+			&i.Specification,
+			&i.Status,
+			&i.OrchestratorID,
+			&i.TurnID,
+			&i.GraphJson,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.AcceptedAt,
+			&i.RejectedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -684,6 +861,58 @@ func (q *Queries) ListTaskPhases(ctx context.Context, planID string) ([]TaskPhas
 			&i.ID,
 			&i.Title,
 			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTaskPlanProposals = `-- name: ListTaskPlanProposals :many
+SELECT id, project_id, request_key, specification, status, orchestrator_id, turn_id,
+       graph_json, error_code, error_message, accepted_at, rejected_at, created_at, updated_at
+FROM task_plan_proposal
+WHERE project_id = ?
+ORDER BY created_at DESC, id
+LIMIT ?
+`
+
+type ListTaskPlanProposalsParams struct {
+	ProjectID string
+	Limit     int64
+}
+
+func (q *Queries) ListTaskPlanProposals(ctx context.Context, arg ListTaskPlanProposalsParams) ([]TaskPlanProposal, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskPlanProposals, arg.ProjectID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TaskPlanProposal{}
+	for rows.Next() {
+		var i TaskPlanProposal
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.RequestKey,
+			&i.Specification,
+			&i.Status,
+			&i.OrchestratorID,
+			&i.TurnID,
+			&i.GraphJson,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.AcceptedAt,
+			&i.RejectedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -939,6 +1168,32 @@ func (q *Queries) NextTaskAttemptNumber(ctx context.Context, arg NextTaskAttempt
 	return attempt_number, err
 }
 
+const rejectTaskPlanProposal = `-- name: RejectTaskPlanProposal :execrows
+UPDATE task_plan_proposal
+SET status = 'rejected', rejected_at = ?, updated_at = ?
+WHERE id = ? AND project_id = ? AND status IN ('ready', 'invalid', 'failed')
+`
+
+type RejectTaskPlanProposalParams struct {
+	RejectedAt sql.NullString
+	UpdatedAt  string
+	ID         string
+	ProjectID  string
+}
+
+func (q *Queries) RejectTaskPlanProposal(ctx context.Context, arg RejectTaskPlanProposalParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rejectTaskPlanProposal,
+		arg.RejectedAt,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ProjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const releaseTaskAttemptDispatch = `-- name: ReleaseTaskAttemptDispatch :execrows
 UPDATE task_attempt
 SET runtime_ref = '', updated_at = ?
@@ -952,6 +1207,49 @@ type ReleaseTaskAttemptDispatchParams struct {
 
 func (q *Queries) ReleaseTaskAttemptDispatch(ctx context.Context, arg ReleaseTaskAttemptDispatchParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, releaseTaskAttemptDispatch, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setTaskPlanProposalState = `-- name: SetTaskPlanProposalState :execrows
+UPDATE task_plan_proposal
+SET status = ?, orchestrator_id = ?, turn_id = ?, graph_json = ?,
+    error_code = ?, error_message = ?, accepted_at = ?, rejected_at = ?, updated_at = ?
+WHERE id = ? AND project_id = ? AND status = ?
+`
+
+type SetTaskPlanProposalStateParams struct {
+	Status         string
+	OrchestratorID string
+	TurnID         string
+	GraphJson      string
+	ErrorCode      string
+	ErrorMessage   string
+	AcceptedAt     sql.NullString
+	RejectedAt     sql.NullString
+	UpdatedAt      string
+	ID             string
+	ProjectID      string
+	Status_2       string
+}
+
+func (q *Queries) SetTaskPlanProposalState(ctx context.Context, arg SetTaskPlanProposalStateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTaskPlanProposalState,
+		arg.Status,
+		arg.OrchestratorID,
+		arg.TurnID,
+		arg.GraphJson,
+		arg.ErrorCode,
+		arg.ErrorMessage,
+		arg.AcceptedAt,
+		arg.RejectedAt,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ProjectID,
+		arg.Status_2,
+	)
 	if err != nil {
 		return 0, err
 	}

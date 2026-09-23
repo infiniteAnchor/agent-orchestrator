@@ -523,6 +523,10 @@ automation remains Phase 4.
 
 ### Phase 4: orchestrator automation
 
+See the [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md) for
+the proposed slice sequence. The first slice is planner-generated task-plan
+proposals with explicit human acceptance and no implicit dispatch.
+
 - Add planner prompts that produce validated task graphs.
 - Add event-triggered planner/reviewer turns driven by durable task events, not
   a live Chat-bus subscription.
