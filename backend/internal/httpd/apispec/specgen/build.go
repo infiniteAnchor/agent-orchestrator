@@ -19,6 +19,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/envelope"
 	importsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/importer"
 	projectsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/project"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/taskauto"
 	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 )
@@ -229,6 +230,21 @@ var schemaNames = map[string]string{ //nolint:gosec // Public OpenAPI type names
 	"ControllersListTaskPlanProposalsResponse":            "ListTaskPlanProposalsResponse",
 	"ControllersListTaskPlanProposalsQuery":               "ListTaskPlanProposalsQuery",
 	"ControllersTaskPlanProposalIDParam":                  "TaskPlanProposalIDParam",
+	"ControllersTaskGateIDParam":                          "TaskGateIDParam",
+	"ControllersTaskRetryPolicyResponse":                  "TaskRetryPolicy",
+	"ControllersTaskRetryPolicyEnvelope":                  "TaskRetryPolicyEnvelope",
+	"ControllersTaskRetryDecisionResponse":                "TaskRetryDecision",
+	"ControllersTaskRetryDecisionEnvelope":                "TaskRetryDecisionEnvelope",
+	"ControllersTaskHandoffResponse":                      "TaskHandoff",
+	"ControllersTaskHandoffEnvelope":                      "TaskHandoffEnvelope",
+	"ControllersListTaskHandoffsResponse":                 "ListTaskHandoffsResponse",
+	"ControllersTaskHumanGateResponse":                    "TaskHumanGate",
+	"ControllersTaskHumanGateEnvelope":                    "TaskHumanGateEnvelope",
+	"ControllersListTaskHumanGatesResponse":               "ListTaskHumanGatesResponse",
+	"TaskautoPolicyInput":                                 "TaskRetryPolicyInput",
+	"TaskautoRetryInput":                                  "TaskRetryInput",
+	"TaskautoHandoffInput":                                "TaskHandoffInput",
+	"TaskautoGateInput":                                   "TaskHumanGateInput",
 	"ControllersTaskIDParam":                              "TaskIDParam",
 	"ControllersTaskScheduleResponse":                     "TaskSchedule",
 	"ControllersTaskScheduleTask":                         "TaskScheduleTask",
@@ -1916,6 +1932,102 @@ func taskPlanOperations() []operation {
 				{http.StatusOK, controllers.TaskPlanProposalEnvelope{}}, {http.StatusConflict, envelope.APIError{}},
 				{http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
 				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodGet, path: "/api/v1/projects/{id}/task-retry-policy", id: "getTaskRetryPolicy", tag: "task-plans",
+			summary:    "Read the project retry and fallback policy",
+			pathParams: []any{controllers.ProjectIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskRetryPolicyEnvelope{}},
+				{http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPut, path: "/api/v1/projects/{id}/task-retry-policy", id: "putTaskRetryPolicy", tag: "task-plans",
+			summary:    "Replace the project retry and fallback policy",
+			pathParams: []any{controllers.ProjectIDParam{}}, reqBody: taskauto.PolicyInput{},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskRetryPolicyEnvelope{}},
+				{http.StatusBadRequest, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/retry", id: "retryTaskAttempt", tag: "task-plans",
+			summary:    "Apply retry, fallback, or escalation policy to one failed attempt",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskIDParam{}},
+			reqBody:    taskauto.RetryInput{},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskRetryDecisionEnvelope{}},
+				{http.StatusBadRequest, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}},
+				{http.StatusConflict, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/handoffs", id: "createTaskHandoff", tag: "task-plans",
+			summary:    "Store a bounded handoff summary for one task attempt",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskIDParam{}},
+			reqBody:    taskauto.HandoffInput{},
+			resps: []respUnit{
+				{http.StatusCreated, controllers.TaskHandoffEnvelope{}},
+				{http.StatusBadRequest, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}},
+				{http.StatusRequestEntityTooLarge, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodGet, path: "/api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/handoffs", id: "listTaskHandoffs", tag: "task-plans",
+			summary:    "List handoff summaries for one task",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.ListTaskHandoffsResponse{}},
+				{http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/gates", id: "createTaskHumanGate", tag: "task-plans",
+			summary:    "Ask a person to approve work on one task",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskIDParam{}},
+			reqBody:    taskauto.GateInput{},
+			resps: []respUnit{
+				{http.StatusCreated, controllers.TaskHumanGateEnvelope{}},
+				{http.StatusBadRequest, envelope.APIError{}}, {http.StatusNotFound, envelope.APIError{}},
+				{http.StatusConflict, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodGet, path: "/api/v1/projects/{id}/task-plans/{planId}/gates", id: "listTaskHumanGates", tag: "task-plans",
+			summary:    "List human gates for one task plan",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.ListTaskHumanGatesResponse{}},
+				{http.StatusNotFound, envelope.APIError{}}, {http.StatusInternalServerError, envelope.APIError{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/gates/{gateId}/approve", id: "approveTaskHumanGate", tag: "task-plans",
+			summary:    "Approve a human gate without dispatching work",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskGateIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskHumanGateEnvelope{}},
+				{http.StatusNotFound, envelope.APIError{}}, {http.StatusConflict, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+		{
+			method: http.MethodPost, path: "/api/v1/projects/{id}/task-plans/{planId}/gates/{gateId}/reject", id: "rejectTaskHumanGate", tag: "task-plans",
+			summary:    "Reject a human gate and cancel a still-queued task",
+			pathParams: []any{controllers.ProjectIDParam{}, controllers.TaskPlanIDParam{}, controllers.TaskGateIDParam{}},
+			resps: []respUnit{
+				{http.StatusOK, controllers.TaskHumanGateEnvelope{}},
+				{http.StatusNotFound, envelope.APIError{}}, {http.StatusConflict, envelope.APIError{}},
+				{http.StatusInternalServerError, envelope.APIError{}}, {http.StatusNotImplemented, envelope.APIError{}},
 			},
 		},
 		{

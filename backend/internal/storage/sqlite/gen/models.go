@@ -462,6 +462,28 @@ type PRURLAlias struct {
 	CanonicalURL string
 }
 
+type PlannerEventCursor struct {
+	Consumer  string
+	LastSeq   int64
+	UpdatedAt string
+}
+
+type PlannerFollowup struct {
+	ID             string
+	ProjectID      string
+	PlanID         string
+	TaskID         string
+	AttemptID      string
+	SourceSeq      int64
+	State          string
+	TurnID         string
+	OrchestratorID string
+	ErrorCode      string
+	Summary        string
+	CreatedAt      string
+	UpdatedAt      string
+}
+
 type Project struct {
 	ID            domain.ProjectID
 	Path          string
@@ -644,6 +666,30 @@ type TaskDependency struct {
 	Position        int64
 }
 
+type TaskHandoff struct {
+	ID        string
+	ProjectID string
+	PlanID    string
+	TaskID    string
+	AttemptID string
+	Summary   string
+	CreatedAt string
+}
+
+type TaskHumanGate struct {
+	ID         string
+	ProjectID  string
+	PlanID     string
+	TaskID     string
+	AttemptID  string
+	RequestKey string
+	State      string
+	Summary    string
+	CreatedAt  string
+	UpdatedAt  string
+	ResolvedAt sql.NullString
+}
+
 type TaskPhase struct {
 	PlanID   string
 	ID       string
@@ -685,6 +731,25 @@ type TaskResult struct {
 	Summary    sql.NullString
 	Evidence   string
 	RecordedAt time.Time
+}
+
+type TaskRetryDecision struct {
+	ID        string
+	ProjectID string
+	PlanID    string
+	TaskID    string
+	AttemptID string
+	Action    string
+	Harness   string
+	Reason    string
+	CreatedAt string
+}
+
+type TaskRetryPolicy struct {
+	ProjectID       string
+	MaxAttempts     int64
+	FallbackHarness string
+	UpdatedAt       string
 }
 
 type TaskVerificationCommand struct {

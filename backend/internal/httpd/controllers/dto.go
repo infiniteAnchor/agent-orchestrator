@@ -132,6 +132,80 @@ type TaskPlanProposalIDParam struct {
 	ProposalID string `path:"proposalId" description:"Opaque planner proposal identifier."`
 }
 
+// TaskGateIDParam is the {gateId} path parameter.
+type TaskGateIDParam struct {
+	GateID string `path:"gateId" description:"Opaque human-gate identifier."`
+}
+
+// TaskRetryPolicyResponse is the project retry and fallback configuration.
+type TaskRetryPolicyResponse struct {
+	MaxAttempts     int    `json:"maxAttempts" minimum:"1" maximum:"8"`
+	FallbackHarness string `json:"fallbackHarness,omitempty"`
+}
+
+// TaskRetryPolicyEnvelope wraps the project retry policy.
+type TaskRetryPolicyEnvelope struct {
+	Policy TaskRetryPolicyResponse `json:"policy"`
+}
+
+// TaskRetryDecisionResponse is the idempotent policy choice for one attempt.
+type TaskRetryDecisionResponse struct {
+	ID        string `json:"id"`
+	AttemptID string `json:"attemptId"`
+	Action    string `json:"action" enum:"none,retry,fallback,escalate,hold"`
+	Harness   string `json:"harness,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	GateID    string `json:"gateId,omitempty"`
+}
+
+// TaskRetryDecisionEnvelope wraps one retry decision.
+type TaskRetryDecisionEnvelope struct {
+	Decision TaskRetryDecisionResponse `json:"decision"`
+}
+
+// TaskHandoffResponse is a bounded summary linked to one task.
+type TaskHandoffResponse struct {
+	ID        string    `json:"id"`
+	TaskID    string    `json:"taskId"`
+	AttemptID string    `json:"attemptId"`
+	Summary   string    `json:"summary"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// TaskHandoffEnvelope wraps one handoff summary.
+type TaskHandoffEnvelope struct {
+	Handoff TaskHandoffResponse `json:"handoff"`
+}
+
+// ListTaskHandoffsResponse lists handoff summaries for one task.
+type ListTaskHandoffsResponse struct {
+	Handoffs []TaskHandoffResponse `json:"handoffs"`
+}
+
+// TaskHumanGateResponse is a restart-safe approval request.
+type TaskHumanGateResponse struct {
+	ID         string     `json:"id"`
+	PlanID     string     `json:"planId"`
+	TaskID     string     `json:"taskId"`
+	AttemptID  string     `json:"attemptId,omitempty"`
+	RequestKey string     `json:"requestKey"`
+	Status     string     `json:"status" enum:"pending,approved,rejected"`
+	Summary    string     `json:"summary"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
+	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+}
+
+// TaskHumanGateEnvelope wraps one human gate.
+type TaskHumanGateEnvelope struct {
+	Gate TaskHumanGateResponse `json:"gate"`
+}
+
+// ListTaskHumanGatesResponse lists the gates for one plan.
+type ListTaskHumanGatesResponse struct {
+	Gates []TaskHumanGateResponse `json:"gates"`
+}
+
 // TaskPlanSummaryEnvelope wraps one task-plan summary.
 type TaskPlanSummaryEnvelope struct {
 	TaskPlan TaskPlanSummaryResponse `json:"taskPlan"`

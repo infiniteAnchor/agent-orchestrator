@@ -523,15 +523,18 @@ automation remains Phase 4.
 
 ### Phase 4: orchestrator automation
 
-See the [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md) for
-the proposed slice sequence. The first slice is planner-generated task-plan
-proposals with explicit human acceptance and no implicit dispatch.
+**Phase 4 status: proposals, reviewer turns, handoffs, human gates, and retry policy are implemented.**
+See the [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md).
+Accepting a proposal or a human gate does not dispatch work. Reviewer turns
+follow `task_result_recorded` through a durable cursor, not a live Chat-bus
+subscription. A blocked or inconclusive attempt is not retried. Desktop review
+UI is still a later client.
 
-- Add planner prompts that produce validated task graphs.
-- Add event-triggered planner/reviewer turns driven by durable task events, not
-  a live Chat-bus subscription.
-- Support handoff summaries and human approval gates.
-- Add retry, fallback, and provider exhaustion policies.
+- Planner prompts produce validated task graphs and wait for explicit acceptance.
+- Event-triggered planner/reviewer turns are driven by durable task-result events.
+- Handoff summaries and human approval gates are stored on the task.
+- Retry, fallback, and provider exhaustion use a per-attempt decision and keep
+  the failed attempt and its workspace.
 
 ### Phase 5: cost controls and operations
 

@@ -13,6 +13,7 @@ earlier contracts; they do not replace them.
 | Schedule API | `GET .../schedule`, `POST .../dispatch`, `POST .../tasks/{taskId}/candidate` | Opaque ids and derived state. No prompts, command output, or host paths. |
 | Recovery | `backend/internal/service/tasksched` | Same attempt is adopted or held. A replacement attempt is not created when launch state is unknown. The default launcher records an attempt-scoped runtime ref; a launcher that creates a worker session returns that session id and the scheduler stores it on the attempt. |
 | Readiness probe | `GET /readyz` | HTTP 200 only after task recovery finishes. `taskRecovery` is `pending` or `complete`. `GET /healthz` stays liveness and does not wait. |
+| Phase 4 automation | `backend/internal/service/taskauto`, migration `0132_task_automation.sql` | One follow-up per `task_result_recorded` event. Human gates block claim. Retry and fallback requeue a failed task without replacing the failed attempt. Inconclusive and blocked attempts are held. |
 
 Process exit and Chat `turn.completed` are rejected as completion signals.
 Verification commands are executed by the server. A verified result makes

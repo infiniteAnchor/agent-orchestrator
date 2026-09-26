@@ -58,6 +58,7 @@ import (
 	settingssvc "github.com/aoagents/agent-orchestrator/backend/internal/service/settings"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systemcheck"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systeminstall"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/taskauto"
 	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 	usagesvc "github.com/aoagents/agent-orchestrator/backend/internal/service/usage"
@@ -522,6 +523,7 @@ func Run() error {
 	taskPlanSvc := taskplansvc.New(store)
 	taskProposalSvc := taskplansvc.NewProposalService(store, sessionSvc, chatSvc)
 	taskScheduler := tasksched.New(store, tasksched.NewMemoryLauncher(), tasksched.ExecVerifier{})
+	taskAutoSvc := taskauto.New(store, taskauto.NewChatReviewer(sessionSvc, chatSvc))
 	if err := seedScratchProjectOnBoot(ctx, cfg, projectSvc); err != nil {
 		stop()
 		lcStack.Stop()
@@ -753,6 +755,7 @@ func Run() error {
 		Projects:           projectSvc,
 		TaskPlans:          taskPlanSvc,
 		TaskProposals:      taskProposalSvc,
+		TaskAutomation:     taskAutoSvc,
 		TaskSchedule:       taskScheduler,
 		TaskRecovery:       taskScheduler,
 		HostID:             hostIdentity.HostID,
@@ -871,6 +874,23 @@ func Run() error {
 				// leaves /readyz pending and does not start dispatch.
 				if err := taskScheduler.Run(ctx); err != nil && ctx.Err() == nil {
 					log.Error("task schedule recovery failed; dispatch stays closed", "err", err)
+				}
+			}()
+			go func() {
+				// Reviewer turns start only after task recovery. A failed
+				// recovery leaves the scheduler unready, so this wait ends
+				// when the process shuts down instead of replaying results.
+				ticker := time.NewTicker(200 * time.Millisecond)
+				defer ticker.Stop()
+				for !taskScheduler.Ready() {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+				if err := taskAutoSvc.Run(ctx); err != nil && ctx.Err() == nil {
+					log.Error("task automation stopped", "err", err)
 				}
 			}()
 			if reconcileErr := reconcilePersistentChatHosts(ctx, cfg.DataDir, store); reconcileErr != nil {

@@ -2730,6 +2730,170 @@ paths:
       summary: Claim ready tasks and launch one attempt each
       tags:
       - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/gates:
+    get:
+      operationId: listTaskHumanGates
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTaskHumanGatesResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List human gates for one task plan
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/gates/{gateId}/approve:
+    post:
+      operationId: approveTaskHumanGate
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Opaque human-gate identifier.
+        in: path
+        name: gateId
+        required: true
+        schema:
+          description: Opaque human-gate identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskHumanGateEnvelope'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Approve a human gate without dispatching work
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/gates/{gateId}/reject:
+    post:
+      operationId: rejectTaskHumanGate
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Opaque human-gate identifier.
+        in: path
+        name: gateId
+        required: true
+        schema:
+          description: Opaque human-gate identifier.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskHumanGateEnvelope'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Reject a human gate and cancel a still-queued task
+      tags:
+      - task-plans
   /api/v1/projects/{id}/task-plans/{planId}/schedule:
     get:
       operationId: getTaskSchedule
@@ -2857,6 +3021,360 @@ paths:
                 $ref: '#/components/schemas/APIError'
           description: Service Unavailable
       summary: Verify an explicit task result and unlock dependents when it passes
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/gates:
+    post:
+      operationId: createTaskHumanGate
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Task identifier within the plan.
+        in: path
+        name: taskId
+        required: true
+        schema:
+          description: Task identifier within the plan.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskHumanGateInput'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskHumanGateEnvelope'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Ask a person to approve work on one task
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/handoffs:
+    get:
+      operationId: listTaskHandoffs
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Task identifier within the plan.
+        in: path
+        name: taskId
+        required: true
+        schema:
+          description: Task identifier within the plan.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTaskHandoffsResponse'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: List handoff summaries for one task
+      tags:
+      - task-plans
+    post:
+      operationId: createTaskHandoff
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Task identifier within the plan.
+        in: path
+        name: taskId
+        required: true
+        schema:
+          description: Task identifier within the plan.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskHandoffInput'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskHandoffEnvelope'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Request Entity Too Large
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Store a bounded handoff summary for one task attempt
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-plans/{planId}/tasks/{taskId}/retry:
+    post:
+      operationId: retryTaskAttempt
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      - description: Durable task plan identifier.
+        in: path
+        name: planId
+        required: true
+        schema:
+          description: Durable task plan identifier.
+          type: string
+      - description: Task identifier within the plan.
+        in: path
+        name: taskId
+        required: true
+        schema:
+          description: Task identifier within the plan.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskRetryInput'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRetryDecisionEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Apply retry, fallback, or escalation policy to one failed attempt
+      tags:
+      - task-plans
+  /api/v1/projects/{id}/task-retry-policy:
+    get:
+      operationId: getTaskRetryPolicy
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRetryPolicyEnvelope'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Read the project retry and fallback policy
+      tags:
+      - task-plans
+    put:
+      operationId: putTaskRetryPolicy
+      parameters:
+      - description: Project identifier (registry key).
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Project identifier (registry key).
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskRetryPolicyInput'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRetryPolicyEnvelope'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Bad Request
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Internal Server Error
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Not Implemented
+      summary: Replace the project retry and fallback policy
       tags:
       - task-plans
   /api/v1/projects/clone:
@@ -10233,6 +10751,24 @@ components:
       required:
       - shellTerminals
       type: object
+    ListTaskHandoffsResponse:
+      properties:
+        handoffs:
+          items:
+            $ref: '#/components/schemas/TaskHandoff'
+          type: array
+      required:
+      - handoffs
+      type: object
+    ListTaskHumanGatesResponse:
+      properties:
+        gates:
+          items:
+            $ref: '#/components/schemas/TaskHumanGate'
+          type: array
+      required:
+      - gates
+      type: object
     ListTaskPlanProposalsResponse:
       properties:
         proposals:
@@ -12364,6 +12900,108 @@ components:
       - recovery
       - claims
       type: object
+    TaskHandoff:
+      properties:
+        attemptId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        summary:
+          type: string
+        taskId:
+          type: string
+      required:
+      - id
+      - taskId
+      - attemptId
+      - summary
+      - createdAt
+      type: object
+    TaskHandoffEnvelope:
+      properties:
+        handoff:
+          $ref: '#/components/schemas/TaskHandoff'
+      required:
+      - handoff
+      type: object
+    TaskHandoffInput:
+      properties:
+        attemptId:
+          maxLength: 128
+          type: string
+        summary:
+          maxLength: 4096
+          type: string
+      required:
+      - attemptId
+      - summary
+      type: object
+    TaskHumanGate:
+      properties:
+        attemptId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        planId:
+          type: string
+        requestKey:
+          type: string
+        resolvedAt:
+          format: date-time
+          type:
+          - "null"
+          - string
+        status:
+          enum:
+          - pending
+          - approved
+          - rejected
+          type: string
+        summary:
+          type: string
+        taskId:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - id
+      - planId
+      - taskId
+      - requestKey
+      - status
+      - summary
+      - createdAt
+      - updatedAt
+      type: object
+    TaskHumanGateEnvelope:
+      properties:
+        gate:
+          $ref: '#/components/schemas/TaskHumanGate'
+      required:
+      - gate
+      type: object
+    TaskHumanGateInput:
+      properties:
+        attemptId:
+          maxLength: 128
+          type: string
+        requestKey:
+          maxLength: 128
+          type: string
+        summary:
+          maxLength: 4096
+          type: string
+      required:
+      - requestKey
+      - summary
+      type: object
     TaskPlan:
       properties:
         id:
@@ -12552,6 +13190,82 @@ components:
       - id
       - title
       - prompt
+      type: object
+    TaskRetryDecision:
+      properties:
+        action:
+          enum:
+          - none
+          - retry
+          - fallback
+          - escalate
+          - hold
+          type: string
+        attemptId:
+          type: string
+        gateId:
+          type: string
+        harness:
+          type: string
+        id:
+          type: string
+        reason:
+          type: string
+      required:
+      - id
+      - attemptId
+      - action
+      type: object
+    TaskRetryDecisionEnvelope:
+      properties:
+        decision:
+          $ref: '#/components/schemas/TaskRetryDecision'
+      required:
+      - decision
+      type: object
+    TaskRetryInput:
+      properties:
+        attemptId:
+          maxLength: 128
+          type: string
+        reason:
+          enum:
+          - failed
+          - provider_exhausted
+          type: string
+      required:
+      - attemptId
+      - reason
+      type: object
+    TaskRetryPolicy:
+      properties:
+        fallbackHarness:
+          type: string
+        maxAttempts:
+          maximum: 8
+          minimum: 1
+          type: integer
+      required:
+      - maxAttempts
+      type: object
+    TaskRetryPolicyEnvelope:
+      properties:
+        policy:
+          $ref: '#/components/schemas/TaskRetryPolicy'
+      required:
+      - policy
+      type: object
+    TaskRetryPolicyInput:
+      properties:
+        fallbackHarness:
+          maxLength: 64
+          type: string
+        maxAttempts:
+          maximum: 8
+          minimum: 1
+          type: integer
+      required:
+      - maxAttempts
       type: object
     TaskSchedule:
       properties:

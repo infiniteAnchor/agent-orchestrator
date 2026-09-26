@@ -18,19 +18,30 @@ See the [control-plane design](../headless-server-control-plane.md) and the
    create/accept retries idempotent. Keep planner output within the current
    task graph contract; harness fallback and retry policy are not planner
    output in this slice.
-2. **Durable event-driven planner/reviewer turns.** Consume task lifecycle CDC
-   events using a durable cursor/claim so a restart can resume without missing
-   or double-applying work. Trigger follow-up review/planning from persisted
-   task results, not `turn.completed` or an in-process Chat-bus subscription.
-   Make event handling idempotent and bound how many follow-up turns one event
-   can create.
-3. **Handoff summaries and human gates.** Store a bounded, task-linked summary
-   for continuation/review. Add explicit approval state and commands for work
-   that needs a person, with durable notifications and restart-safe resolution.
-4. **Retry, fallback, and exhaustion policy.** Add durable policy and
-   transitions for retryable failures, configured fallback harnesses, provider
-   exhaustion, and terminal escalation. Preserve attempt identity, worktree,
-   and artifacts; never retry an ambiguous launch as though it failed.
+2. **Durable event-driven planner/reviewer turns (implemented).** A cursor
+   named `task-results` tails `change_log`. The first time automation starts,
+   the cursor is set to the log head so older results are not replayed. After
+   that, each `task_result_recorded` event creates at most one follow-up
+   (`UNIQUE(source_seq)`). Other events only advance the cursor. The follow-up
+   asks the project Chat orchestrator for a review, using the follow-up id as
+   the Chat client message id. Restarts resume queued or running follow-ups
+   and do not send a second turn. Review starts only after task recovery has
+   finished.
+3. **Handoff summaries and human gates (implemented).** A handoff is a
+   task-linked summary of at most 4096 UTF-8 bytes. A human gate is the
+   durable notification: `pending`, `approved`, or `rejected`, idempotent on
+   a project-scoped request key. A pending gate blocks `ClaimReadyTask`.
+   Approval does not dispatch. Rejecting a gate cancels a task that is still
+   queued. Repeating approve or reject returns the stored resolution.
+4. **Retry, fallback, and exhaustion policy (implemented).** One decision is
+   stored per attempt. An ordinary failure requeues the same task and harness
+   until `maxAttempts` (default 2, cap 8). `provider_exhausted` requeues onto
+   the configured fallback harness. The workspace key and the failed attempt
+   row stay in place; the next claim creates a new attempt. At the cap, or
+   when exhaustion has no remaining fallback, the task stays failed and a
+   gate is opened. A blocked attempt, an inconclusive result, or a dispatch
+   lease that was never resolved to a confirmed failure is held and is not
+   requeued. A pending gate also refuses an explicit retry.
 
 Each slice needs focused domain/service/store/controller tests and a diff review
 before the next slice. Automated dispatch remains governed by Phase 3 recovery

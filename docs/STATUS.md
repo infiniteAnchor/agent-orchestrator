@@ -228,11 +228,11 @@ surface (`npm run sqlc`, `npm run api`).
   waits for task recovery. Planner automation remains Phase 4. See the
   [execution plan](plans/phase-3-durable-task-graph.md) and
   [contract index](plans/phase-3-contract-index.md).
-- **Headless Phase 4, first slice**: project Chat orchestrators can create
-  durable task-plan proposals for human review. Accepting one atomically creates
-  a normal task plan but does not dispatch it. The proposal endpoints are
-  available in this branch; desktop review UI and event-driven follow-up turns
-  remain future slices. See the
+- **Headless Phase 4**: planner proposals, event-driven reviewer turns,
+  handoff summaries, human gates, and retry/fallback/escalation are
+  implemented. Accepting a proposal still does not dispatch it. A pending
+  human gate blocks claim; approval does not dispatch either. Desktop review
+  UI remains a later client. See the
   [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md).
 - **Browser automation acceptance**: the runtime implementation is complete.
   AO packages one

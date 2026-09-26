@@ -18,18 +18,20 @@ import (
 	prsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/pr"
 	projectsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/project"
 	reviewsvc "github.com/aoagents/agent-orchestrator/backend/internal/service/review"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/taskauto"
 	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 )
 
 // APIDeps bundles every service the API layer's controllers depend on.
 type APIDeps struct {
-	Agents        controllers.AgentCatalog
-	CodexAccounts controllers.CodexAccountService
-	Projects      projectsvc.Manager
-	TaskPlans     taskplansvc.Manager
-	TaskProposals taskplansvc.ProposalManager
-	TaskSchedule  tasksched.API
+	Agents         controllers.AgentCatalog
+	CodexAccounts  controllers.CodexAccountService
+	Projects       projectsvc.Manager
+	TaskPlans      taskplansvc.Manager
+	TaskProposals  taskplansvc.ProposalManager
+	TaskAutomation taskauto.Manager
+	TaskSchedule   tasksched.API
 	// TaskRecovery gates /readyz. Nil means task recovery is not part of this
 	// process, so the probe stays "listening and ready".
 	TaskRecovery       TaskRecoveryGate
@@ -109,33 +111,34 @@ func normalizeAPIDeps(deps APIDeps, log *slog.Logger) APIDeps {
 // API owns one controller per resource and is the single Register call the
 // router invokes to mount the /api/v1 surface.
 type API struct {
-	cfg           config.Config
-	deps          APIDeps
-	agents        *controllers.AgentsController
-	codexAccounts *controllers.CodexAccountsController
-	projects      *controllers.ProjectsController
-	taskPlans     *controllers.TaskPlansController
-	taskProposals *controllers.TaskPlanProposalsController
-	sessions      *controllers.SessionsController
-	desktop       *controllers.DesktopWorkspaceController
-	usage         *controllers.UsageController
-	prs           *controllers.PRsController
-	reviews       *controllers.ReviewsController
-	notifications *controllers.NotificationsController
-	push          *controllers.PushController
-	imports       *controllers.ImportController
-	shellTerms    *controllers.ShellTerminalsController
-	conversations *controllers.ConversationsController
-	settings      *controllers.SettingsController
-	dev           *controllers.DevController
-	browser       *controllers.BrowserController
-	system        *controllers.SystemController
-	identity      *controllers.IdentityController
-	capabilities  *controllers.CapabilitiesController
-	endpoints     *controllers.EndpointsController
-	systemInstall *controllers.SystemInstallController
-	agentAuth     *controllers.AgentAuthController
-	events        *EventsController
+	cfg            config.Config
+	deps           APIDeps
+	agents         *controllers.AgentsController
+	codexAccounts  *controllers.CodexAccountsController
+	projects       *controllers.ProjectsController
+	taskPlans      *controllers.TaskPlansController
+	taskProposals  *controllers.TaskPlanProposalsController
+	taskAutomation *controllers.TaskAutomationController
+	sessions       *controllers.SessionsController
+	desktop        *controllers.DesktopWorkspaceController
+	usage          *controllers.UsageController
+	prs            *controllers.PRsController
+	reviews        *controllers.ReviewsController
+	notifications  *controllers.NotificationsController
+	push           *controllers.PushController
+	imports        *controllers.ImportController
+	shellTerms     *controllers.ShellTerminalsController
+	conversations  *controllers.ConversationsController
+	settings       *controllers.SettingsController
+	dev            *controllers.DevController
+	browser        *controllers.BrowserController
+	system         *controllers.SystemController
+	identity       *controllers.IdentityController
+	capabilities   *controllers.CapabilitiesController
+	endpoints      *controllers.EndpointsController
+	systemInstall  *controllers.SystemInstallController
+	agentAuth      *controllers.AgentAuthController
+	events         *EventsController
 }
 
 // NewAPI constructs the API surface from its dependencies. cfg carries the
@@ -152,8 +155,9 @@ func NewAPI(cfg config.Config, deps APIDeps) *API {
 		projects: &controllers.ProjectsController{
 			Mgr: deps.Projects,
 		},
-		taskPlans:     &controllers.TaskPlansController{Svc: deps.TaskPlans, Schedule: deps.TaskSchedule},
-		taskProposals: &controllers.TaskPlanProposalsController{Svc: deps.TaskProposals},
+		taskPlans:      &controllers.TaskPlansController{Svc: deps.TaskPlans, Schedule: deps.TaskSchedule},
+		taskProposals:  &controllers.TaskPlanProposalsController{Svc: deps.TaskProposals},
+		taskAutomation: &controllers.TaskAutomationController{Svc: deps.TaskAutomation},
 		sessions: &controllers.SessionsController{
 			Svc:           deps.Sessions,
 			Activity:      deps.Activity,
@@ -203,6 +207,7 @@ func (a *API) Register(root chi.Router) {
 			a.projects.Register(r)
 			a.taskPlans.Register(r)
 			a.taskProposals.Register(r)
+			a.taskAutomation.Register(r)
 			a.sessions.Register(r)
 			a.desktop.Register(r)
 			a.usage.Register(r)

@@ -28,9 +28,11 @@ Start with [architecture.md](architecture.md) for the current backend model and
 
 ## Active implementation
 
-Headless Phases 1, 2, and 3 are complete. Phase 3's contracts are indexed in
-[phase-3-contract-index.md](plans/phase-3-contract-index.md). Phase 4 is
-planner automation; see its [execution plan](plans/phase-4-orchestrator-automation.md).
+Headless Phases 1 through 4 are implemented in this branch. Phase 3's contracts
+are indexed in [phase-3-contract-index.md](plans/phase-3-contract-index.md).
+Phase 4 is planner automation; see its
+[execution plan](plans/phase-4-orchestrator-automation.md). Desktop review UI
+is still a later client.
 
 ## Mental model
 

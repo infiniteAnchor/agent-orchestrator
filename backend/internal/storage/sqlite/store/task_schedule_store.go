@@ -178,6 +178,12 @@ func (s *Store) ClaimReadyTask(
 			result.Reason = reason
 			return nil
 		}
+		if _, err := q.PendingTaskHumanGate(ctx, gen.PendingTaskHumanGateParams{PlanID: planID, TaskID: taskID}); err == nil {
+			result.Reason = domain.ClaimHumanGate
+			return nil
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		rows, err := q.TransitionTaskState(ctx, gen.TransitionTaskStateParams{
 			State: domain.TaskStateClaimed, UpdatedAt: now, PlanID: planID, ID: taskID, State_2: domain.TaskStateQueued,
 		})
