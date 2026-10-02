@@ -14,6 +14,7 @@ import (
 // TaskAutomationController exposes retry policy, handoffs, and human gates.
 type TaskAutomationController struct{ Svc taskauto.Manager }
 
+// Register mounts task automation routes.
 func (c *TaskAutomationController) Register(r chi.Router) {
 	r.Get("/projects/{id}/task-retry-policy", c.getPolicy)
 	r.Put("/projects/{id}/task-retry-policy", c.putPolicy)

@@ -203,7 +203,7 @@ func NewWithDeps(d Deps) *Scheduler {
 	}
 	newID := d.NewID
 	if newID == nil {
-		newID = func() string { return uuid.NewString() }
+		newID = uuid.NewString
 	}
 	interval := d.Interval
 	if interval <= 0 {
@@ -307,7 +307,7 @@ func (s *Scheduler) Dispatch(ctx context.Context, projectID domain.ProjectID, pl
 	if err := s.requireReady(); err != nil {
 		return DispatchReport{}, err
 	}
-	if _, err := s.requireProject(ctx, projectID); err != nil {
+	if err := s.requireProject(ctx, projectID); err != nil {
 		return DispatchReport{}, err
 	}
 	return s.dispatchLocked(ctx, projectID, planID)
@@ -353,8 +353,8 @@ func (s *Scheduler) dispatchLocked(ctx context.Context, projectID domain.Project
 				return DispatchReport{}, apierr.Internal("TASK_CLAIM_FAILED", "Failed to claim task")
 			}
 			if result.Reason == "" {
-				copy := result.Attempt
-				claimed = &copy
+				attempt := result.Attempt
+				claimed = &attempt
 				break
 			}
 		}
@@ -380,7 +380,7 @@ func (s *Scheduler) Snapshot(ctx context.Context, projectID domain.ProjectID, pl
 	if s == nil || s.store == nil {
 		return Snapshot{}, apierr.Internal("TASK_SCHEDULER_UNAVAILABLE", "Task scheduler is unavailable")
 	}
-	if _, err := s.requireProject(ctx, projectID); err != nil {
+	if err := s.requireProject(ctx, projectID); err != nil {
 		return Snapshot{}, err
 	}
 	view, ok, err := s.store.LoadTaskSchedule(ctx, projectID, planID)
@@ -410,13 +410,13 @@ func (s *Scheduler) SubmitCandidate(ctx context.Context, projectID domain.Projec
 	default:
 		return Completion{}, apierr.Invalid("INVALID_TASK_SIGNAL", "Task result signal must be explicit_result", nil)
 	}
-	if len(in.AttemptID) == 0 || len(in.AttemptID) > 128 || in.AttemptID != strings.TrimSpace(in.AttemptID) {
+	if in.AttemptID == "" || len(in.AttemptID) > 128 || in.AttemptID != strings.TrimSpace(in.AttemptID) {
 		return Completion{}, apierr.Invalid("INVALID_TASK_ATTEMPT", "Task attempt id is invalid", nil)
 	}
 	if len(in.Summary) > 4096 {
 		return Completion{}, apierr.Invalid("TASK_RESULT_TOO_LARGE", "Task result summary exceeds 4096 bytes", map[string]any{"field": "summary", "maxBytes": 4096})
 	}
-	if _, err := s.requireProject(ctx, projectID); err != nil {
+	if err := s.requireProject(ctx, projectID); err != nil {
 		return Completion{}, err
 	}
 	view, ok, err := s.store.LoadTaskSchedule(ctx, projectID, planID)
@@ -654,15 +654,15 @@ func (s *Scheduler) requireReady() error {
 	return nil
 }
 
-func (s *Scheduler) requireProject(ctx context.Context, projectID domain.ProjectID) (domain.ProjectRecord, error) {
+func (s *Scheduler) requireProject(ctx context.Context, projectID domain.ProjectID) error {
 	record, ok, err := s.store.GetProject(ctx, string(projectID))
 	if err != nil {
-		return domain.ProjectRecord{}, apierr.Internal("PROJECT_LOAD_FAILED", "Failed to load project")
+		return apierr.Internal("PROJECT_LOAD_FAILED", "Failed to load project")
 	}
 	if !ok || !record.ArchivedAt.IsZero() {
-		return domain.ProjectRecord{}, apierr.NotFound("PROJECT_NOT_FOUND", "Unknown project")
+		return apierr.NotFound("PROJECT_NOT_FOUND", "Unknown project")
 	}
-	return record, nil
+	return nil
 }
 
 func (s *Scheduler) nextID() string {

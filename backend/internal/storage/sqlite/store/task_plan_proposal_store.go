@@ -56,6 +56,7 @@ func (s *Store) CreateTaskPlanProposal(ctx context.Context, proposal domain.Task
 	return got, got.ID == proposal.ID, nil
 }
 
+// GetTaskPlanProposalByRequest loads a proposal by its project-scoped retry key.
 func (s *Store) GetTaskPlanProposalByRequest(ctx context.Context, projectID domain.ProjectID, requestKey string) (domain.TaskPlanProposal, bool, error) {
 	row, err := s.qr.GetTaskPlanProposalByRequest(ctx, gen.GetTaskPlanProposalByRequestParams{ProjectID: string(projectID), RequestKey: requestKey})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -68,6 +69,7 @@ func (s *Store) GetTaskPlanProposalByRequest(ctx context.Context, projectID doma
 	return proposal, err == nil, err
 }
 
+// GetTaskPlanProposal loads a proposal belonging to a project.
 func (s *Store) GetTaskPlanProposal(ctx context.Context, projectID domain.ProjectID, id string) (domain.TaskPlanProposal, bool, error) {
 	row, err := s.qr.GetTaskPlanProposal(ctx, gen.GetTaskPlanProposalParams{ProjectID: string(projectID), ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -80,6 +82,7 @@ func (s *Store) GetTaskPlanProposal(ctx context.Context, projectID domain.Projec
 	return proposal, err == nil, err
 }
 
+// ListTaskPlanProposals lists recent proposals for a project.
 func (s *Store) ListTaskPlanProposals(ctx context.Context, projectID domain.ProjectID, limit int64) ([]domain.TaskPlanProposal, error) {
 	rows, err := s.qr.ListTaskPlanProposals(ctx, gen.ListTaskPlanProposalsParams{ProjectID: string(projectID), Limit: limit})
 	if err != nil {
@@ -96,6 +99,7 @@ func (s *Store) ListTaskPlanProposals(ctx context.Context, projectID domain.Proj
 	return out, nil
 }
 
+// ListPendingTaskPlanProposals lists proposals awaiting generation or recovery.
 func (s *Store) ListPendingTaskPlanProposals(ctx context.Context) ([]domain.TaskPlanProposal, error) {
 	rows, err := s.qr.ListPendingTaskPlanProposals(ctx)
 	if err != nil {
@@ -194,6 +198,7 @@ func (s *Store) AcceptTaskPlanProposal(ctx context.Context, projectID domain.Pro
 	return summary, nil
 }
 
+// RejectTaskPlanProposal rejects a proposal only while it remains reviewable.
 func (s *Store) RejectTaskPlanProposal(ctx context.Context, projectID domain.ProjectID, id string, now time.Time) (bool, error) {
 	if err := s.writeMu.LockContext(ctx); err != nil {
 		return false, err

@@ -38,9 +38,10 @@ expose desktop proposal review, task schedules, explicit dispatch requests, and
 human gates; see the [desktop review plan](plans/desktop-task-plan-review.md).
 Explicit dispatch launches workers through session/workspace services; acceptance,
 gate approval, ticks, and restart do not claim new tasks. Ambiguous launches hold
-their durable attempt identity. Before Phase 5 budgets and operations, exercise
-native installed-provider acceptance; see the
-[runtime execution record](plans/task-execution-runtime-gaps.md).
+their durable attempt identity. Native installed-provider completion and desktop
+transport acceptance have been exercised; detached Chat crash recovery still
+holds its original attempt. See the [native acceptance record](plans/task-execution-acceptance.md)
+for remaining validation limits before Phase 5 budgets and operations.
 
 ## Mental model
 

@@ -100,6 +100,17 @@ describe("useOpenShellTerminal", () => {
 		expect(queryClient.getQueryData(shellTerminalsQueryKey)).toEqual([shell]);
 	});
 
+	it("opens remote shells when the daemon omits the host working directory", async () => {
+		const shell = { handleId: "remote-shell", title: "Remote shell", createdAt: "2026-10-01T00:00:00Z" };
+		postMock.mockResolvedValue({ data: { shellTerminal: shell } });
+		const queryClient = queryClientWithShells();
+		const { result } = renderHook(() => useOpenShellTerminal(), { wrapper: wrapper(queryClient) });
+
+		await act(async () => result.current.mutateAsync({}));
+
+		expect(queryClient.getQueryData<ShellTerminal[]>(shellTerminalsQueryKey)?.find((item) => item.handleId === shell.handleId)).toEqual(shell);
+	});
+
 	it("sends the saved Windows shell preference to the daemon", async () => {
 		isWindowsMock.mockReturnValue(true);
 		shellStoreMock.preference = { kind: "git-bash", path: undefined };

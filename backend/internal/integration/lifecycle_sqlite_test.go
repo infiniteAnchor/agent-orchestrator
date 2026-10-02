@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -217,6 +218,9 @@ func newStack(t *testing.T) *stack {
 func TestDelegateEndpointRetriesCodexBootstrapWithoutDaemonRestart(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	store, err := sqlitetest.Open(filepath.Join(root, "db"))
 	if err != nil {
 		t.Fatal(err)

@@ -237,8 +237,10 @@ surface (`npm run sqlc`, `npm run api`).
   dispatch, verified completion, and crash recovery are implemented. `/readyz`
   waits for task recovery. Explicit dispatch creates real worker sessions with
   isolated workspaces and durable attempt/session ownership. Recovery adopts
-  existing workers or holds uncertain launches. Native provider acceptance
-  remains untested. See the
+  existing workers or holds uncertain launches. Native Codex task completion and
+  desktop transport passed isolated acceptance; detached Chat crash recovery
+  held the original attempt rather than reconnecting it. See the
+  [native acceptance record](plans/task-execution-acceptance.md),
   [execution plan](plans/phase-3-durable-task-graph.md) and
   [contract index](plans/phase-3-contract-index.md).
 - **Headless Phase 4**: planner proposals, event-driven reviewer turns,
@@ -248,10 +250,10 @@ surface (`npm run sqlc`, `npm run api`).
   within concurrency/workspace limits. A pending human gate blocks only its task.
   Desktop review is available from project boards. See the
   [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md).
-- **Next headless work**: exercise native task-worker acceptance before Phase 5
-  cost controls. Explicit dispatch and real session launch/adoption are
-  implemented; validation and remaining acceptance checks are in the
-  [runtime-gap handoff](plans/task-execution-runtime-gaps.md).
+- **Next headless work**: address the detached Chat recovery limitation and verify
+  remaining CI/platform gates before Phase 5 cost controls. Native task-worker
+  completion and desktop local/remote acceptance are recorded in the
+  [acceptance handoff](plans/task-execution-acceptance.md).
 - **Browser automation acceptance**: the runtime implementation is complete.
   AO packages one
   checksum-pinned Vercel `agent-browser` Rust binary and routes a deliberately

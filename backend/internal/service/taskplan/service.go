@@ -32,9 +32,9 @@ const (
 	maxTaskPromptBytes   = 64 * 1024
 	maxDependencyEdges   = 5_000
 	maxVerificationSteps = 1_000
-	maxCommandBytes       = 8 * 1024
-	maxWorkspaceKeyBytes  = 128
-	maxHarnessBytes       = 64
+	maxCommandBytes      = 8 * 1024
+	maxWorkspaceKeyBytes = 128
+	maxHarnessBytes      = 64
 )
 
 // Store is the narrow durable surface required by task-plan use cases.

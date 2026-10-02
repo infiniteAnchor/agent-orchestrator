@@ -66,17 +66,17 @@ func TestRunInstallScriptCleansUpAfterExecutionFailure(t *testing.T) {
 
 func TestRunInstallScriptCancellationCleansUp(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewTLSServer(httpHandler("#!/bin/sh\nsleep 5"))
+	server := httptest.NewTLSServer(httpHandler("#!/bin/sh\nprintf started\nsleep 5"))
 	t.Cleanup(server.Close)
 	dataDir := t.TempDir()
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	_, err := newAdapter(dataDir, server.Client()).RunInstallScript(ctx, ports.InstallScriptCommand{
 		URL: server.URL, Interpreter: []string{"sh"},
-	}, io.Discard, io.Discard)
-	if err == nil {
-		t.Fatal("expected cancellation")
+	}, cancelOnWrite{cancel: cancel}, io.Discard)
+	if err == nil || ctx.Err() != context.Canceled {
+		t.Fatalf("expected cancellation after script startup, got %v", err)
 	}
 	entries, readErr := os.ReadDir(filepath.Join(dataDir, "installers", "tmp"))
 	if readErr != nil || len(entries) != 0 {
@@ -196,4 +196,13 @@ type staticHTTPHandler struct {
 
 func (h *staticHTTPHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	_, _ = io.WriteString(w, h.body)
+}
+
+// Cancel only after the script writes output, so slow downloads cannot make the
+// cleanup assertion pass without ever creating an installer job.
+type cancelOnWrite struct{ cancel context.CancelFunc }
+
+func (w cancelOnWrite) Write(p []byte) (int, error) {
+	w.cancel()
+	return len(p), nil
 }

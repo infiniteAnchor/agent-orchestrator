@@ -3,7 +3,8 @@
 Recorded during desktop task-plan integration on 2026-10-01. The findings below
 are historical evidence. Both implementation gaps are now closed alongside
 the desktop task-plan work. Native installed-provider acceptance
-remains untested; complete it before Phase 5 budgets and operations.
+was subsequently exercised; see [native acceptance](task-execution-acceptance.md)
+for completion, desktop transport, crash holds, and remaining validation limits.
 
 ## Completed desktop work
 

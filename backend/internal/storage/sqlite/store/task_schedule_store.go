@@ -390,7 +390,7 @@ func (s *Store) settleAttemptAndTask(ctx context.Context, attemptID string, atte
 			applied = true
 		} else if _, ok := domain.CheckAdvanceAttempt(attempt.State, attemptTo); !ok {
 			return nil
-		} else if _, err := applyAttemptSteps(ctx, q, attempt, attemptTo, at); err != nil {
+		} else if err := applyAttemptSteps(ctx, q, attempt, attemptTo, at); err != nil {
 			return err
 		} else {
 			applied = true
@@ -431,7 +431,7 @@ func (s *Store) BeginCollection(ctx context.Context, planID, taskID, attemptID s
 			return nil
 		}
 		if attempt.State != domain.TaskAttemptStateCollecting {
-			if _, err := applyAttemptSteps(ctx, q, attempt, domain.TaskAttemptStateCollecting, at); err != nil {
+			if err := applyAttemptSteps(ctx, q, attempt, domain.TaskAttemptStateCollecting, at); err != nil {
 				return err
 			}
 		}
@@ -495,7 +495,7 @@ func (s *Store) CommitTaskResult(ctx context.Context, result domain.TaskResult) 
 			return fmt.Errorf("commit task result: attempt %s is not task %s", result.AttemptID, result.TaskID)
 		}
 		if attempt.State != domain.TaskAttemptStateCollecting {
-			if _, err := applyAttemptSteps(ctx, q, attempt, domain.TaskAttemptStateCollecting, result.RecordedAt); err != nil {
+			if err := applyAttemptSteps(ctx, q, attempt, domain.TaskAttemptStateCollecting, result.RecordedAt); err != nil {
 				return err
 			}
 		}
@@ -613,21 +613,21 @@ func applyTaskSteps(ctx context.Context, q *gen.Queries, planID, taskID string, 
 	return nil
 }
 
-func applyAttemptSteps(ctx context.Context, q *gen.Queries, attempt domain.TaskAttempt, to domain.TaskAttemptState, at time.Time) (domain.TaskAttempt, error) {
+func applyAttemptSteps(ctx context.Context, q *gen.Queries, attempt domain.TaskAttempt, to domain.TaskAttemptState, at time.Time) error {
 	steps, ok := domain.CheckAdvanceAttempt(attempt.State, to)
 	if !ok {
-		return domain.TaskAttempt{}, fmt.Errorf("attempt %s cannot advance %s -> %s", attempt.ID, attempt.State, to)
+		return fmt.Errorf("attempt %s cannot advance %s -> %s", attempt.ID, attempt.State, to)
 	}
 	cur := attempt
 	for _, step := range steps {
 		next, applied, err := settleTaskAttempt(ctx, q, cur.ID, cur.State, step, nil, at)
 		if err != nil {
-			return domain.TaskAttempt{}, err
+			return err
 		}
 		if !applied {
-			return domain.TaskAttempt{}, fmt.Errorf("attempt %s changed before %s -> %s", cur.ID, cur.State, step)
+			return fmt.Errorf("attempt %s changed before %s -> %s", cur.ID, cur.State, step)
 		}
 		cur = next
 	}
-	return cur, nil
+	return nil
 }

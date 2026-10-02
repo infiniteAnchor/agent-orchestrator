@@ -99,13 +99,28 @@ function compact(entries: BrowserHistoryEntry[]): BrowserHistoryEntry[] {
 }
 
 function fittedHistory(entries: BrowserHistoryEntry[]): { entries: BrowserHistoryEntry[]; serialized: string } {
-	const retained = [...entries];
-	while (retained.length > 0) {
-		const serialized = `${JSON.stringify({ version: HISTORY_VERSION, entries: retained }, null, 2)}\n`;
-		if (Buffer.byteLength(serialized) <= HISTORY_MAX_FILE_BYTES) return { entries: retained, serialized };
-		retained.pop();
+	const serialize = (retained: BrowserHistoryEntry[]) =>
+		`${JSON.stringify({ version: HISTORY_VERSION, entries: retained }, null, 2)}\n`;
+	let retained = [...entries];
+	let serialized = serialize(retained);
+	if (Buffer.byteLength(serialized) <= HISTORY_MAX_FILE_BYTES) return { entries: retained, serialized };
+
+	// Serialized size grows with each added entry. Find the largest fitting
+	// prefix without repeatedly encoding a multi-megabyte file one entry apart.
+	let lower = 0;
+	let upper = entries.length;
+	while (lower < upper) {
+		const count = Math.ceil((lower + upper) / 2);
+		const candidate = serialize(entries.slice(0, count));
+		if (Buffer.byteLength(candidate) <= HISTORY_MAX_FILE_BYTES) {
+			lower = count;
+		} else {
+			upper = count - 1;
+		}
 	}
-	return { entries: [], serialized: `${JSON.stringify({ version: HISTORY_VERSION, entries: [] }, null, 2)}\n` };
+	retained = entries.slice(0, lower);
+	serialized = serialize(retained);
+	return { entries: retained, serialized };
 }
 
 export class BrowserHistoryStore {

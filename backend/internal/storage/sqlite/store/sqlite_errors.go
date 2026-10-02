@@ -16,8 +16,3 @@ func isSQLitePrimaryKey(err error) bool {
 	var sqliteErr *moderncsqlite.Error
 	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
 }
-
-func isSQLiteForeignKey(err error) bool {
-	var sqliteErr *moderncsqlite.Error
-	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
-}

@@ -78,7 +78,7 @@ function normalizeProjectPath(path: string): string {
 
 function findRegisteredWorkspaceByPath(workspaces: WorkspaceSummary[], path: string): WorkspaceSummary | undefined {
 	const normalizedPath = normalizeProjectPath(path);
-	return workspaces.find((workspace) => normalizeProjectPath(workspace.path) === normalizedPath);
+	return workspaces.find((workspace) => workspace.path !== undefined && normalizeProjectPath(workspace.path) === normalizedPath);
 }
 type CreateProjectConfigInput = {
 	workerAgent: string;

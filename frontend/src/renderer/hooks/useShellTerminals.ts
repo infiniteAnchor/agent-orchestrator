@@ -16,7 +16,7 @@ export type ShellTerminal = {
 	projectId?: string;
 	/** Agent session this shell is scoped to; absent for standalone shells. */
 	sessionId?: string;
-	workingDir: string;
+	workingDir?: string;
 	title: string;
 	createdAt: string;
 	/**
@@ -36,7 +36,7 @@ function isLegacyDirectoryTitle(title: string, workingDir: string): boolean {
 }
 
 function toShellTerminal(t: components["schemas"]["ShellTerminalResponse"]): ShellTerminal {
-	const title = isLegacyDirectoryTitle(t.title, t.workingDir) ? "Terminal" : t.title;
+	const title = t.workingDir && isLegacyDirectoryTitle(t.title, t.workingDir) ? "Terminal" : t.title;
 	return {
 		handleId: t.handleId,
 		projectId: t.projectId,

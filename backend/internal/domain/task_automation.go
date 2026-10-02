@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 )
 
+// Task automation errors describe unavailable records and blocked transitions.
 var (
 	ErrPlannerCursorMissing  = errors.New("domain: planner cursor is not initialized")
 	ErrTaskRetryAmbiguous    = errors.New("domain: ambiguous task attempt cannot be retried")
@@ -125,6 +126,7 @@ func DecideRetry(in RetryInput) RetryChoice {
 // PlannerFollowupState is the lifecycle of one event-driven reviewer turn.
 type PlannerFollowupState string
 
+// Planner follow-up lifecycle states.
 const (
 	PlannerFollowupQueued    PlannerFollowupState = "queued"
 	PlannerFollowupRunning   PlannerFollowupState = "running"
@@ -174,6 +176,7 @@ type TaskHandoff struct {
 // HumanGateState is the resolution of work that is waiting on a person.
 type HumanGateState string
 
+// Human gate resolution states.
 const (
 	HumanGatePending  HumanGateState = "pending"
 	HumanGateApproved HumanGateState = "approved"

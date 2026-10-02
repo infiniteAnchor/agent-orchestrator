@@ -19,7 +19,8 @@ acceptance and gate approval save facts, only explicit dispatch claims new work,
 and real sessions use isolated workspaces with durable attempt ownership.
 Desktop copy was updated in all eight languages. The original desktop validation
 below is retained; new runtime validation and native acceptance limits are in
-[task execution runtime gaps](task-execution-runtime-gaps.md).
+[task execution runtime gaps](task-execution-runtime-gaps.md) and the subsequent
+[native acceptance record](task-execution-acceptance.md).
 
 ## Validation
 
@@ -53,3 +54,23 @@ seven skipped). The failure classes match those above. Runtime validation and
 remaining native acceptance limits are recorded in
 [the execution record](task-execution-runtime-gaps.md). No release or push was
 performed.
+
+## Native acceptance update (2026-10-02)
+
+The real Linux Electron checkout and preload passed local browsing and authenticated
+remote task-plan browsing, explicit worker dispatch, verification, and repeated
+dispatch with no duplicate claims. The remote test used the isolated daemon's
+LAN listener on the same host. Wide and narrow native screenshots are in the
+[acceptance evidence](../screenshots/task-execution-acceptance/README.md).
+
+The recorded optional-path errors and fixture/dependency failures are resolved.
+With Node 24.21.0, the complete frontend suite passed 296 files and 4,034 tests
+(six skipped); frontend/E2E typechecks, renderer build, and all 57 renderer smoke
+tests passed. Product UI typecheck, 125 tests, build, and pack dry-run passed.
+
+Backend build, vet, lint, and ordinary tests passed. The SQLite migration race
+package exceeded the 15-minute limit in both the full run and an isolated rerun;
+that validation gate remains red. Crash recovery proved durable conservative
+holds, with seamless detached Chat adoption still unverified. Native macOS/Windows
+packaging, a second physical machine, and remote CI remain unchecked. See the
+[acceptance record](task-execution-acceptance.md) for complete limits and cleanup.

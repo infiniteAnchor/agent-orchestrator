@@ -195,7 +195,7 @@ func (s *Service) start(ctx context.Context, followup domain.PlannerFollowup) {
 		ctx = s.rootCtx
 	}
 	s.running[followup.ID] = struct{}{}
-	sync := s.syncReview
+	syncReview := s.syncReview
 	s.mu.Unlock()
 	run := func() {
 		defer func() {
@@ -205,7 +205,7 @@ func (s *Service) start(ctx context.Context, followup domain.PlannerFollowup) {
 		}()
 		s.review(ctx, followup)
 	}
-	if sync {
+	if syncReview {
 		run()
 		return
 	}

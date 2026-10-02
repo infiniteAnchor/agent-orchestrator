@@ -615,7 +615,7 @@ export function ProjectGeneralSettingsView({
 	project: {
 		id: string;
 		kindLabel: string;
-		path: string;
+		path?: string;
 		pathHref?: string;
 		repo: string;
 		repoHref?: string;
@@ -636,7 +636,9 @@ export function ProjectGeneralSettingsView({
 				/>
 				<ProjectSettingsValueRow icon={icons?.id} label={labels.id} value={project.id} />
 				<ProjectSettingsValueRow icon={icons?.kind} label={labels.kind} value={project.kindLabel} />
-				<ProjectSettingsValueRow externalLink={externalLink} href={project.pathHref} icon={icons?.path} label={labels.path} value={project.path} />
+				{project.path !== undefined && (
+					<ProjectSettingsValueRow externalLink={externalLink} href={project.pathHref} icon={icons?.path} label={labels.path} value={project.path} />
+				)}
 				<ProjectSettingsValueRow externalLink={externalLink} href={project.repoHref} icon={icons?.repo} label={labels.repo} value={project.repo || "—"} />
 			</ProjectSettingsSection>
 			{project.workspaceRepos && (

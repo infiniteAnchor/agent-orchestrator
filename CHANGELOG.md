@@ -1,5 +1,26 @@
 # Changelog
 
+## [2026-10-02]
+
+### Added
+
+- Native Codex task-worker and Linux desktop acceptance evidence, including
+  authenticated remote dispatch, verified dependency completion, and durable
+  crash holds. Detached Chat reconnection and remaining platform/CI validation
+  are explicitly recorded as gaps.
+
+### Fixed
+
+- Planner guidance now includes a valid task-graph example and explains phase
+  identities, shell quoting, and independent worker workspaces.
+- Updated Codex protocol generation and prevented discriminator-name collisions.
+- Preserved omitted remote project paths across desktop forms, shell terminals,
+  navigation, and shared project views.
+- Bounded browser-history size fitting and stabilized lazy settings controls,
+  installer cancellation, private credential fixtures, and desktop bridge tests.
+- Cleared the recorded Go lint findings. Full frontend and ordinary backend
+  tests pass; the SQLite migration race gate still exceeds its 15-minute limit.
+
 ## [2026-10-01]
 
 ### Added

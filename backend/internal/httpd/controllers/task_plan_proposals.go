@@ -18,6 +18,7 @@ import (
 // TaskPlanProposalsController exposes authenticated project-scoped planner drafts.
 type TaskPlanProposalsController struct{ Svc taskplansvc.ProposalManager }
 
+// Register mounts task plan proposal routes.
 func (c *TaskPlanProposalsController) Register(r chi.Router) {
 	r.Get("/projects/{id}/task-plan-proposals", c.list)
 	r.Post("/projects/{id}/task-plan-proposals", c.create)

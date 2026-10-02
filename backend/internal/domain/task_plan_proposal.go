@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// Task plan proposal errors describe missing projects and proposals awaiting review.
 var (
 	ErrTaskPlanProposalNotReady        = errors.New("domain: task plan proposal is not ready")
 	ErrTaskPlanProposalProjectNotFound = errors.New("domain: active task plan proposal project not found")
@@ -14,6 +15,7 @@ var (
 // Proposals are intentionally separate from task plans until explicit approval.
 type TaskPlanProposalState string
 
+// Task plan proposal lifecycle states.
 const (
 	TaskPlanProposalQueued     TaskPlanProposalState = "queued"
 	TaskPlanProposalGenerating TaskPlanProposalState = "generating"

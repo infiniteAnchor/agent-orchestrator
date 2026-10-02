@@ -35,13 +35,13 @@ func (ExecVerifier) Verify(ctx context.Context, dir string, commands []string) (
 	}
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		return inconclusive("project directory is unavailable"), nil
+		return inconclusive("project directory is unavailable"), nil //nolint:nilerr // An inaccessible workspace is recorded as inconclusive verification evidence.
 	}
 	steps := make([]verifyStep, 0, len(commands))
 	for _, command := range commands {
 		exitCode, startErr := runCommand(ctx, dir, command)
 		if startErr != nil {
-			return inconclusive("verification command could not start"), nil
+			return inconclusive("verification command could not start"), nil //nolint:nilerr // A launch failure is evidence of an inconclusive check, not a scheduler failure.
 		}
 		steps = append(steps, verifyStep{ExitCode: exitCode})
 		if exitCode != 0 {
