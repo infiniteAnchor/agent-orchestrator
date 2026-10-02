@@ -116,13 +116,7 @@ func TestMigration0013DedupesExistingDuplicates(t *testing.T) {
 }
 
 func TestMigration0044BackfillsBatchlessReviewRuns(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ao.db")+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	upTo(t, db, 43)
+	db := openMigrationFixture(t, 43, "?_pragma=busy_timeout(5000)")
 	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
 		t.Fatalf("disable foreign keys: %v", err)
 	}
@@ -144,13 +138,7 @@ func TestMigration0044BackfillsBatchlessReviewRuns(t *testing.T) {
 }
 
 func TestMigration0080MovesReviewerSessionsIntoPerHarnessReviewRows(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ao.db")+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	upTo(t, db, 48)
+	db := openMigrationFixture(t, 48, "?_pragma=busy_timeout(5000)")
 	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
 		t.Fatalf("disable foreign keys for review-only fixture: %v", err)
 	}
@@ -233,13 +221,7 @@ ON CONFLICT (session_id, harness) DO UPDATE SET
 }
 
 func TestMigration0103RoundTripsWithoutChangeLogCompatViews(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ao.db")+pragmas)
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	upTo(t, db, 103)
+	db := openMigrationFixture(t, 103, pragmas)
 
 	var leakedCompatRefs int
 	if err := db.QueryRow(`

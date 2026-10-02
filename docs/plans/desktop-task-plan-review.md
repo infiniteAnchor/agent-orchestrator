@@ -70,7 +70,8 @@ tests passed. Product UI typecheck, 125 tests, build, and pack dry-run passed.
 
 Backend build, vet, lint, and ordinary tests passed. The SQLite migration race
 package exceeded the 15-minute limit in both the full run and an isolated rerun;
-that validation gate remains red. Crash recovery proved durable conservative
-holds, with seamless detached Chat adoption still unverified. Native macOS/Windows
+the subsequent fixture-reuse follow-up resolved that gate with a complete
+backend race pass (685 seconds for migrations). Crash recovery proved durable
+conservative holds, with seamless detached Chat adoption still unverified. Native macOS/Windows
 packaging, a second physical machine, and remote CI remain unchecked. See the
 [acceptance record](task-execution-acceptance.md) for complete limits and cleanup.

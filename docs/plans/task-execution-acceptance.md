@@ -10,7 +10,7 @@ Do not migrate existing user data, publish, or push.
 - [x] Restart the daemon and check durable identity, adoption/holds, and no duplicates.
 - [x] Exercise native desktop task-plan and remote transport flows.
 - [x] Resolve recorded backend/frontend validation failures and run full affected gates
-      (SQLite migration race timeout remains a validation gap).
+      (SQLite migration race timeout resolved by the follow-up below).
 - [x] Review the final diff, record evidence and limitations, and clean up test processes.
 
 ## Native results (2026-10-02)
@@ -62,7 +62,8 @@ for bounded planner and worker turns. No existing AO database was migrated.
 - Full backend `go test ./...` passed. The full Go 1.26.5 race run passed every
   package except the SQLite migration package, which exceeded the CI command's
   15-minute limit. An isolated rerun of that package also exceeded 15 minutes
-  during a different migration test; the migration race gate remains red locally.
+  during a different migration test; this initial migration race gate was red
+  locally and is resolved by the follow-up below.
   The cancellation-test failure observed under concurrent load
   was fixed and its focused race test passed ten repetitions.
 - All eight recorded frontend optional-path type errors are fixed while preserving
@@ -88,3 +89,26 @@ private isolated state were retained under `~/.ao/dev/task-acceptance` rather th
 force-deleted. The development desktop was restarted for main/preload changes;
 its renderer ran at `http://localhost:5173`, its daemon at `127.0.0.1:43122`, and
 the separate task daemon at `127.0.0.1:43121`. No test Electron/Xvfb process remains.
+
+## Migration race validation follow-up (2026-10-02)
+
+The timeout came from repeatedly rebuilding empty historical schemas under the
+race detector. Upgrade-test setup now clones cached, immutable historical
+snapshots into separate files. Each snapshot is checkpointed before copying and
+restores its connection-local foreign-key setting. Seeded upgrades, repairs,
+rollbacks, and fresh-install tests still execute real migrations. A regression
+test verifies historical version identity, foreign-key enforcement, and clone
+isolation. Independent review found no defects.
+
+The complete Go 1.26.5 `go test -race -timeout=15m ./...` passed. The SQLite
+migration package finished in 685.334 seconds, compared with the previous
+900-second timeouts and an archived 889.568-second isolated pass. The SQLite
+store race package passed in 498.925 seconds.
+
+Build, vet, formatting, and golangci-lint v2.12.2 (zero findings) passed. Linux
+CLI E2E and the Docker fresh-install smoke check passed. API regeneration showed
+no OpenAPI or TypeScript drift; the cloud client regenerated without drift and
+passed typecheck, all 21 tests, and pack dry-run. The earlier full frontend,
+renderer smoke, and product UI results remain applicable because those sources
+and dependencies are unchanged by this test-only follow-up. Native macOS/Windows
+checks require CI runners; no release or publishing step was used for validation.

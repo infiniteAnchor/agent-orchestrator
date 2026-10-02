@@ -19,7 +19,11 @@
 - Bounded browser-history size fitting and stabilized lazy settings controls,
   installer cancellation, private credential fixtures, and desktop bridge tests.
 - Cleared the recorded Go lint findings. Full frontend and ordinary backend
-  tests pass; the SQLite migration race gate still exceeds its 15-minute limit.
+  tests pass.
+- Reused isolated historical SQLite fixtures instead of repeatedly replaying
+  empty migration history in upgrade tests; seeded upgrades and fresh installs
+  retain real migration coverage. The complete backend race suite now passes
+  within the existing 15-minute package limit.
 
 ## [2026-10-01]
 

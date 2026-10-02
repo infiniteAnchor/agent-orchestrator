@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -209,14 +208,7 @@ func TestTaskGraphSchema(t *testing.T) {
 // The widened table must still roll back cleanly: a daemon that downgrades has
 // to shed the new vocabulary without losing the events it already captured.
 func TestTaskGraphSchema_DownMigrationShedsTaskVocabularyAndTables(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ao.db")+pragmas)
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = db.Close() })
-
-	upTo(t, db, 128)
+	db := openMigrationFixture(t, 128, pragmas)
 	if _, err := db.Exec(`INSERT INTO projects (id, path, registered_at) VALUES ('proj-1', '/tmp/proj-1', datetime('now'))`); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}

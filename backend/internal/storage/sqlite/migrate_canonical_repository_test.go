@@ -2,17 +2,11 @@ package sqlite
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 )
 
 func TestMigrateCanonicalRepositoryPreservesExplicitTrust(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ao.db")+pragmas)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	upTo(t, db, 125)
+	db := openMigrationFixture(t, 125, pragmas)
 	for _, seed := range []struct {
 		id     string
 		config any
