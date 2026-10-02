@@ -16,6 +16,7 @@ import { agentSwitchesQueryRoot } from "../hooks/useAgentSwitches";
 import { sessionUsageQueryRoot } from "../hooks/useSessionUsageSummaries";
 import { agentSwitchVisibility } from "./agent-switch-visibility";
 import { codexAccountsQueryKey, writeCodexAccounts } from "../hooks/codex-accounts-state";
+import { taskPlanQueryRoot } from "../hooks/useTaskPlans";
 import type { components } from "../../api/schema";
 
 export type EventTransport = {
@@ -23,6 +24,14 @@ export type EventTransport = {
 };
 
 const INVALIDATE_WINDOW_MS = 150;
+const TASK_PLAN_CDC_EVENT_TYPES = [
+	"task_plan_created",
+	"task_created",
+	"task_updated",
+	"task_attempt_created",
+	"task_attempt_updated",
+	"task_result_recorded",
+] as const;
 
 // CDC event types the daemon pushes over the SSE stream (see
 // backend/internal/cdc/event.go). The SSE writer tags each frame with
@@ -40,6 +49,7 @@ const CDC_EVENT_TYPES = [
 	"pr_review_thread_resolved",
 	"review_run_created",
 	"review_run_updated",
+	...TASK_PLAN_CDC_EVENT_TYPES,
 ] as const;
 
 /**
@@ -57,6 +67,8 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 			let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 			const pendingConversationSessions = new Set<string>();
 			const pendingInterfaceTransitionSessions = new Set<string>();
+			const pendingTaskPlanProjects = new Set<string>();
+			let taskPlanRootInvalidationPending = false;
 			let workspaceInvalidationPending = false;
 			let allConversationsInvalidationPending = false;
 			let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -106,13 +118,22 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 					// the header reporting that clamp, so refresh every conversation instead of
 					// leaving an open chat frozen on its pre-gap snapshot.
 					allConversationsInvalidationPending = true;
+					taskPlanRootInvalidationPending = true;
 				}
 				if (event && "data" in event) {
 					try {
 						const decoded = JSON.parse(String((event as MessageEvent).data)) as {
+							projectId?: unknown;
 							sessionId?: unknown;
 							payload?: unknown;
 						};
+						if (
+							TASK_PLAN_CDC_EVENT_TYPES.includes(event.type as (typeof TASK_PLAN_CDC_EVENT_TYPES)[number]) &&
+							typeof decoded.projectId === "string" &&
+							decoded.projectId
+						) {
+							pendingTaskPlanProjects.add(decoded.projectId);
+						}
 						// The SSE endpoint sends the complete durable CDC event. Routing
 						// fields such as sessionId live on that envelope, while trigger-built
 						// details such as conversationId live inside its payload. Do not
@@ -164,6 +185,14 @@ export function createEventTransport(queryClient: QueryClient): EventTransport {
 						invalidate(sessionUsageQueryRoot);
 						workspaceInvalidationPending = false;
 					}
+					if (taskPlanRootInvalidationPending) {
+						invalidate(taskPlanQueryRoot);
+						taskPlanRootInvalidationPending = false;
+					}
+					for (const projectId of pendingTaskPlanProjects) {
+						invalidate(["task-plans", projectId]);
+					}
+					pendingTaskPlanProjects.clear();
 					for (const sessionId of pendingConversationSessions) {
 						invalidate(conversationQueryKey(sessionId));
 					}

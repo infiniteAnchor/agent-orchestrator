@@ -138,6 +138,16 @@ surface (`npm run sqlc`, `npm run api`).
 ### Frontend (Electron + React)
 
 - Electron + React 19 + TanStack Router/Query + Tailwind + shadcn primitives.
+- Project boards expose **Task plans** for local and enrolled remote daemon
+  projects. Users submit bounded specifications, review proposal tasks and
+  dependencies, accept/reject drafts, browse accepted plans, request immediate
+  dispatch, inspect task/attempt states and session links, and resolve human
+  gates. Task facts refresh through CDC; proposals and gates use bounded
+  refresh while the dialog is open. Cloud and mock preview projects do not
+  expose daemon task-plan controls.
+  This desktop work is implemented alongside the real worker execution path.
+  It has not been release-verified; validation is recorded in the
+  [desktop review plan](plans/desktop-task-plan-review.md).
 - Target-isolated per-session browser-control spike: a dedicated local
   daemon↔Electron bridge drives only the selected session's `WebContentsView`
   through Electron's bound debugger transport. `ao browser` supports open,
@@ -225,15 +235,23 @@ surface (`npm run sqlc`, `npm run api`).
 - **Headless Phase 3: durable task graph**: graph validation, SQLite
   persistence, the project-scoped plan API, the derived ready queue, attempt
   dispatch, verified completion, and crash recovery are implemented. `/readyz`
-  waits for task recovery. Planner automation remains Phase 4. See the
+  waits for task recovery. Explicit dispatch creates real worker sessions with
+  isolated workspaces and durable attempt/session ownership. Recovery adopts
+  existing workers or holds uncertain launches. Native provider acceptance
+  remains untested. See the
   [execution plan](plans/phase-3-durable-task-graph.md) and
   [contract index](plans/phase-3-contract-index.md).
 - **Headless Phase 4**: planner proposals, event-driven reviewer turns,
   handoff summaries, human gates, and retry/fallback/escalation are
-  implemented. Accepting a proposal still does not dispatch it. A pending
-  human gate blocks claim; approval does not dispatch either. Desktop review
-  UI remains a later client. See the
+  implemented. Proposal acceptance, gate approval, background ticks, and restart
+  do not claim new work. Each explicit dispatch claims currently ready tasks
+  within concurrency/workspace limits. A pending human gate blocks only its task.
+  Desktop review is available from project boards. See the
   [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md).
+- **Next headless work**: exercise native task-worker acceptance before Phase 5
+  cost controls. Explicit dispatch and real session launch/adoption are
+  implemented; validation and remaining acceptance checks are in the
+  [runtime-gap handoff](plans/task-execution-runtime-gaps.md).
 - **Browser automation acceptance**: the runtime implementation is complete.
   AO packages one
   checksum-pinned Vercel `agent-browser` Rust binary and routes a deliberately

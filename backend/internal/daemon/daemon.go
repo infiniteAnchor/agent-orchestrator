@@ -522,7 +522,7 @@ func Run() error {
 	projectSvc := projectsvc.NewWithDeps(projectsvc.Deps{Store: store, Sessions: sessionSvc, DefaultHarness: domain.AgentHarness(cfg.Agent), Telemetry: telemetrySink, Logger: log})
 	taskPlanSvc := taskplansvc.New(store)
 	taskProposalSvc := taskplansvc.NewProposalService(store, sessionSvc, chatSvc)
-	taskScheduler := tasksched.New(store, tasksched.NewMemoryLauncher(), tasksched.ExecVerifier{})
+	taskScheduler := tasksched.New(store, tasksched.NewSessionLauncher(store, sessionSvc, sessionSvc), tasksched.ExecVerifier{})
 	taskAutoSvc := taskauto.New(store, taskauto.NewChatReviewer(sessionSvc, chatSvc))
 	if err := seedScratchProjectOnBoot(ctx, cfg, projectSvc); err != nil {
 		stop()
@@ -870,13 +870,6 @@ func Run() error {
 		go func() {
 			defer close(done)
 			go func() {
-				// Run recovers before it claims anything. A failed recovery
-				// leaves /readyz pending and does not start dispatch.
-				if err := taskScheduler.Run(ctx); err != nil && ctx.Err() == nil {
-					log.Error("task schedule recovery failed; dispatch stays closed", "err", err)
-				}
-			}()
-			go func() {
 				// Reviewer turns start only after task recovery. A failed
 				// recovery leaves the scheduler unready, so this wait ends
 				// when the process shuts down instead of replaying results.
@@ -902,6 +895,13 @@ func Run() error {
 			if reconcileErr := lcStack.ReconcileRuntime(ctx); reconcileErr != nil {
 				log.Error("background agent-process reconciliation on boot failed", "err", reconcileErr)
 			}
+			go func() {
+				// Reconcile sessions first: task adoption must observe their
+				// recovered controllers. Run never claims fresh tasks.
+				if err := taskScheduler.Run(ctx); err != nil && ctx.Err() == nil {
+					log.Error("task schedule recovery failed; dispatch stays closed", "err", err)
+				}
+			}()
 			if reconcileErr := taskProposalSvc.Recover(ctx); reconcileErr != nil {
 				log.Error("task plan proposal recovery failed", "err", reconcileErr)
 			}

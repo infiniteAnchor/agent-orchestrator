@@ -134,10 +134,10 @@ This proposal extends these existing capabilities:
   through the remote-safe wire contract.
 
 Service packaging, LAN enablement without Electron, and remote Electron
-connection support are implemented in Phases 1 and 2. Remaining work is durable
-task planning, scheduling, verification, and routing. Existing session
-reconciliation and CDC replay are foundations to extend for task attempts; they do not already
-implement the proposed task scheduler.
+connection support are implemented in Phases 1 and 2. Durable task planning,
+scheduler/verification contracts, and Phase 4 automation are implemented.
+Remaining execution work is real worker launch/adoption and explicit dispatch
+authorization; see the [runtime-gap handoff](plans/task-execution-runtime-gaps.md).
 
 ## Runtime modes
 
@@ -505,12 +505,17 @@ Mobile, and harness installs.
 
 ### Phase 3: durable task graph
 
-**Phase 3 status: graph, persistence, schedule, dispatch, and recovery complete.**
+**Phase 3 status: graph, persistence, and scheduler/API contracts implemented;
+real worker launch/adoption incomplete.**
 See the [execution plan](plans/phase-3-durable-task-graph.md) and the
 [contract index](plans/phase-3-contract-index.md). The scheduler derives
 readiness from verified results, claims one attempt before launch, and holds
-an attempt when the launcher cannot tell whether a worker started. Planner
-automation remains Phase 4.
+an attempt when the launcher cannot tell whether a worker started. Explicit
+dispatch launches real sessions through the existing isolated workspace path.
+Session creation atomically binds the attempt before workspace/controller side
+effects. Background ticks and restart recover existing attempts only. Native
+provider acceptance remains to be exercised; see the
+[runtime execution record](plans/task-execution-runtime-gaps.md).
 
 - Persist plans, phases, dependencies, attempts, and task results.
 - Add graph validation and a bounded ready-queue scheduler.
@@ -525,10 +530,13 @@ automation remains Phase 4.
 
 **Phase 4 status: proposals, reviewer turns, handoffs, human gates, and retry policy are implemented.**
 See the [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md).
-Accepting a proposal or a human gate does not dispatch work. Reviewer turns
+Accepting a proposal or approving a human gate saves durable facts without
+authorizing worker launch. Dispatch explicitly to claim currently ready work,
+and dispatch again after dependencies finish or gates are approved. Restart
+and scheduler ticks do not claim new tasks. Reviewer turns
 follow `task_result_recorded` through a durable cursor, not a live Chat-bus
 subscription. A blocked or inconclusive attempt is not retried. Desktop review
-UI is still a later client.
+UI is available from the project board's Task plans dialog.
 
 - Planner prompts produce validated task graphs and wait for explicit acceptance.
 - Event-triggered planner/reviewer turns are driven by durable task-result events.

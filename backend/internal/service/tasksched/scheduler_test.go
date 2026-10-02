@@ -2,6 +2,7 @@ package tasksched
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -212,6 +213,8 @@ func TestVerifiedResultRestoresDependentReadinessAfterRestart(t *testing.T) {
 	if len(ready) != 1 || ready[0] != "b" {
 		t.Fatalf("ready after recovery = %v", ready)
 	}
+	runRecoveryTicks(t, sched)
+	assertAttemptCount(t, db, plan.ID, "b", 0)
 	report, err := sched.Dispatch(ctx, domain.ProjectID(project), plan.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -275,7 +278,7 @@ func newScheduler(t *testing.T, limits domain.ScheduleLimits) (*schedulerFixture
 	return &schedulerFixture{Scheduler: sched, store: db}, launcher, project
 }
 
-func schedulerOn(t *testing.T, db *store.Store, launcher *MemoryLauncher) *Scheduler {
+func schedulerOn(t *testing.T, db *store.Store, launcher Launcher) *Scheduler {
 	t.Helper()
 	var n int
 	return NewWithDeps(Deps{
@@ -299,4 +302,226 @@ func seedProject(t *testing.T, db *store.Store, id string) {
 
 func asAPI(err error, target **apierr.Error) bool {
 	return errors.As(err, target)
+}
+
+// observeScheduleStore lets tests wait for real scheduler ticks without relying
+// on a sleep or starting a provider worker.
+type observeScheduleStore struct {
+	Store
+	ticks chan struct{}
+}
+
+func (s observeScheduleStore) ListSchedulePlans(ctx context.Context) ([]domain.TaskPlanSummary, error) {
+	plans, err := s.Store.ListSchedulePlans(ctx)
+	select {
+	case s.ticks <- struct{}{}:
+	default:
+	}
+	return plans, err
+}
+
+func TestAcceptanceTicksAndRestartRequireExplicitDispatch(t *testing.T) {
+	s, launcher, project := newScheduler(t, domain.ScheduleLimits{})
+	ctx := context.Background()
+	now := time.Now().UTC()
+	plan := domain.TaskPlan{ID: "accepted-plan", ProjectID: project, Title: "Ship", Tasks: []domain.PlannedTask{
+		{ID: "a", Title: "A", Prompt: "do a", WorkspaceKey: "a"},
+		{ID: "b", Title: "B", Prompt: "do b", WorkspaceKey: "b"},
+	}}
+	proposal, _, err := s.store.CreateTaskPlanProposal(ctx, domain.TaskPlanProposal{
+		ID: "proposal", ProjectID: domain.ProjectID(project), RequestKey: "proposal-request", Specification: "Ship", CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal.GraphJSON = string(graph)
+	proposal.State = domain.TaskPlanProposalReady
+	if applied, err := s.store.SetTaskPlanProposalState(ctx, proposal, domain.TaskPlanProposalQueued, now); err != nil || !applied {
+		t.Fatalf("ready proposal = %v, %v", applied, err)
+	}
+	if _, err := s.store.AcceptTaskPlanProposal(ctx, domain.ProjectID(project), proposal.ID, plan, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.store.OpenHumanGate(ctx, domain.HumanGate{
+		ID: "gate", ProjectID: domain.ProjectID(project), PlanID: plan.ID, TaskID: "b", RequestKey: "gate-request", Summary: "Review B", CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Startup and idle ticks see the accepted plan but cannot claim even a,
+	// which has no gate. Approval likewise does not authorize work.
+	runRecoveryTicks(t, s.Scheduler)
+	assertAttemptCount(t, s.store, plan.ID, "a", 0)
+	assertAttemptCount(t, s.store, plan.ID, "b", 0)
+	first, err := s.Dispatch(ctx, domain.ProjectID(project), plan.ID)
+	if err != nil || len(first.Claims) != 1 || first.Claims[0].TaskID != "a" {
+		t.Fatalf("explicit dispatch with task-scoped gate = %+v, %v", first, err)
+	}
+	if _, err := s.store.ResolveHumanGate(ctx, domain.ProjectID(project), "gate", domain.HumanGateApproved, now); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh scheduler models restart. It preserves a's authorized launch,
+	// while b remains inert even after approval and repeated recovery ticks.
+	restarted := schedulerOn(t, s.store, launcher)
+	restarted.newID = func() string { return "restart-attempt" }
+	runRecoveryTicks(t, restarted)
+	assertAttemptCount(t, s.store, plan.ID, "a", 1)
+	assertAttemptCount(t, s.store, plan.ID, "b", 0)
+	second, err := restarted.Dispatch(ctx, domain.ProjectID(project), plan.ID)
+	if err != nil || len(second.Claims) != 1 || second.Claims[0].TaskID != "b" {
+		t.Fatalf("explicit dispatch after approval = %+v, %v", second, err)
+	}
+	again, err := restarted.Dispatch(ctx, domain.ProjectID(project), plan.ID)
+	if err != nil || len(again.Claims) != 0 {
+		t.Fatalf("repeated dispatch = %+v, %v", again, err)
+	}
+	for _, attempt := range append(first.Claims, second.Claims...) {
+		if got := launcher.DispatchCount(attempt.ID); got != 1 {
+			t.Fatalf("attempt %s dispatched %d times", attempt.ID, got)
+		}
+		assertAttemptCount(t, s.store, plan.ID, attempt.TaskID, 1)
+	}
+}
+
+func runRecoveryTicks(t *testing.T, s *Scheduler) {
+	t.Helper()
+	original := s.store
+	observed := observeScheduleStore{Store: original, ticks: make(chan struct{}, 8)}
+	s.store = observed
+	s.interval = time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("scheduler Run: %v", err)
+		}
+		s.store = original
+	}()
+	for i := 0; i < 3; i++ {
+		select {
+		case <-observed.ticks:
+		case <-time.After(5 * time.Second):
+			t.Fatal("scheduler did not recover and tick")
+		}
+	}
+}
+
+func assertAttemptCount(t *testing.T, db *store.Store, planID, taskID string, want int) {
+	t.Helper()
+	attempts, err := db.ListTaskAttempts(context.Background(), planID, taskID)
+	if err != nil || len(attempts) != want {
+		t.Fatalf("task %s attempts = %+v, %v; want %d", taskID, attempts, err, want)
+	}
+}
+
+func TestRecordedLaunchUnknownRuntimeIsHeldWithoutReplacement(t *testing.T) {
+	s, launcher, project := newScheduler(t, domain.ScheduleLimits{})
+	ctx := context.Background()
+	plan := domain.TaskPlan{ID: "plan", ProjectID: project, Title: "Ship", Tasks: []domain.PlannedTask{{ID: "a", Title: "A", Prompt: "a"}}}
+	if _, err := s.store.CreateTaskPlan(ctx, plan, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dispatched, err := s.Dispatch(ctx, domain.ProjectID(project), plan.ID)
+	if err != nil || len(dispatched.Claims) != 1 {
+		t.Fatalf("dispatch = %+v, %v", dispatched, err)
+	}
+	attemptID := dispatched.Claims[0].ID
+	launcher.Override(attemptID, LaunchAmbiguous)
+	if err := s.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	view, _, err := s.store.LoadTaskSchedule(ctx, domain.ProjectID(project), plan.ID)
+	if err != nil || len(view.Attempts) != 1 || view.Attempts[0].State != domain.TaskAttemptStateBlocked {
+		t.Fatalf("unknown runtime attempt = %+v, %v", view.Attempts, err)
+	}
+	if report, err := s.Dispatch(ctx, domain.ProjectID(project), plan.ID); err != nil || len(report.Claims) != 0 {
+		t.Fatalf("dispatch replaced unknown runtime = %+v, %v", report, err)
+	}
+	if launcher.DispatchCount(attemptID) != 1 {
+		t.Fatal("unknown runtime launched a replacement")
+	}
+}
+
+type workspaceTestLauncher struct {
+	*MemoryLauncher
+	location  string
+	sessionID string
+	err       error
+}
+
+func (l workspaceTestLauncher) Dispatch(ctx context.Context, req LaunchRequest) (LaunchOutcome, error) {
+	outcome, err := l.MemoryLauncher.Dispatch(ctx, req)
+	outcome.SessionID = l.sessionID
+	return outcome, err
+}
+
+func (l workspaceTestLauncher) WorkspaceLocation(context.Context, domain.SessionID) (string, error) {
+	return l.location, l.err
+}
+
+type directoryVerifier struct{ dir string }
+
+func (v *directoryVerifier) Verify(_ context.Context, dir string, _ []string) (VerifyReport, error) {
+	v.dir = dir
+	return VerifyReport{Passed: dir != "", Inconclusive: dir == ""}, nil
+}
+
+func TestWorkerResultUsesIsolatedWorkspaceOrIsInconclusive(t *testing.T) {
+	for _, state := range []string{"available", "lookup_failure", "no_resolver"} {
+		t.Run(state, func(t *testing.T) {
+			unavailable := state != "available"
+			s, memory, project := newScheduler(t, domain.ScheduleLimits{})
+			ctx := context.Background()
+			plan := domain.TaskPlan{ID: "plan", ProjectID: project, Title: "Ship", Tasks: []domain.PlannedTask{{ID: "a", Title: "A", Prompt: "a", VerificationCommands: []string{"true"}}}}
+			if _, err := s.store.CreateTaskPlan(ctx, plan, time.Now().UTC()); err != nil {
+				t.Fatal(err)
+			}
+			worker, err := s.store.CreateSession(ctx, domain.SessionRecord{ProjectID: domain.ProjectID(project), Kind: domain.KindWorker, Mode: domain.SessionModeTUI, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			launcher := workspaceTestLauncher{MemoryLauncher: memory, location: t.TempDir(), sessionID: string(worker.ID)}
+			wantDir := launcher.location
+			if unavailable {
+				launcher.err = errors.New("workspace unavailable")
+				wantDir = ""
+			}
+			s.launcher = launcher
+			if state == "no_resolver" {
+				s.launcher = struct{ Launcher }{launcher}
+			}
+			verifier := &directoryVerifier{}
+			s.verifier = verifier
+			if err := s.Recover(ctx); err != nil {
+				t.Fatal(err)
+			}
+			dispatched, err := s.Dispatch(ctx, domain.ProjectID(project), plan.ID)
+			if err != nil || len(dispatched.Claims) != 1 {
+				t.Fatalf("dispatch = %+v, %v", dispatched, err)
+			}
+			done, err := s.SubmitCandidate(ctx, domain.ProjectID(project), plan.ID, "a", Candidate{AttemptID: dispatched.Claims[0].ID, Signal: SignalExplicitResult})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verifier.dir != wantDir {
+				t.Fatalf("verification directory = %q, want %q", verifier.dir, wantDir)
+			}
+			wantOutcome := domain.TaskResultVerified
+			if unavailable {
+				wantOutcome = domain.TaskResultInconclusive
+			}
+			if done.Outcome != wantOutcome {
+				t.Fatalf("result = %s, want %s", done.Outcome, wantOutcome)
+			}
+		})
+	}
 }

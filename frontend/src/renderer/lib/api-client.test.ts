@@ -202,6 +202,14 @@ describe("subscribeApiBaseUrl", () => {
 });
 
 describe("normalizeApiOperation", () => {
+	it("omits task-plan, proposal, and gate identities from telemetry operations", () => {
+		expect(normalizeApiOperation("POST", "/api/v1/projects/private-project/task-plan-proposals/private-proposal/accept")).toBe(
+			"POST /api/v1/projects/:id/task-plan-proposals/:id/accept",
+		);
+		expect(normalizeApiOperation("POST", "/api/v1/projects/private-project/task-plans/private-plan/gates/private-gate/approve")).toBe(
+			"POST /api/v1/projects/:id/task-plans/:id/gates/:id/approve",
+		);
+	});
 	it("replaces identifier segments after resource collections", () => {
 		expect(normalizeApiOperation("get", "/api/v1/projects/my project id")).toBe("GET /api/v1/projects/:id");
 		expect(normalizeApiOperation("POST", "/api/v1/sessions/ao-42/kill")).toBe("POST /api/v1/sessions/:id/kill");

@@ -52,6 +52,7 @@ import {
 	sessionsBoardLabels,
 } from "./SessionsBoardAdapters";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { TaskPlansButton } from "./TaskPlansDialog";
 
 type SessionsBoardProps = {
 	/** When set, the board shows only this project's sessions. */
@@ -259,6 +260,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 
 	const actions = projectId ? (
 		<>
+			{workspace && workspace.kind !== "cloud" && !usesPreviewWorkspaceData ? <TaskPlansButton key={projectId} projectId={projectId} /> : null}
 			{visibleSpawnError && !showProjectEmpty && (
 				<TopbarActionError className="max-w-content-max truncate" title={visibleSpawnError}>
 					{visibleSpawnError}

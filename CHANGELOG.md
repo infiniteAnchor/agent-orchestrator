@@ -1,12 +1,31 @@
 # Changelog
 
+## [2026-10-01]
+
+### Added
+
+- Desktop project task-plan review for local and remote daemons: bounded
+  specification submission, proposal decisions, accepted-plan browsing,
+  immediate dispatch requests, task/attempt progress, and human-gate decisions.
+- Localized task-plan controls in all eight supported languages.
+
+### Changed
+
+- Task workers now launch through daemon-owned session and isolated workspace
+  services, with atomic attempt/session ownership and crash-safe adoption or hold.
+- New task claims require explicit plan dispatch. Acceptance, gate approval,
+  background ticks, and restart do not activate plans. Verification uses the
+  bound worker workspace and effective harness limits are enforced at claim time.
+
 ## [2026-09-22]
 
 ### Added
 
 - Project-scoped planner proposals with durable Chat-turn recovery, bounded
   graph validation, explicit accept/reject operations, and atomic acceptance
-  into the task-plan scheduler without automatic dispatch.
+  into the task-plan scheduler without direct dispatch by the acceptance
+  handler. The automatic-claim gap found during desktop integration was closed
+  on 2026-10-01; only explicit dispatch now claims new tasks.
 
 ## [2026-09-21]
 

@@ -81,6 +81,32 @@ func (q *Queries) BindTaskAttemptRuntime(ctx context.Context, arg BindTaskAttemp
 	return result.RowsAffected()
 }
 
+const bindTaskWorkerSession = `-- name: BindTaskWorkerSession :execrows
+UPDATE task_attempt
+SET session_id = ?, harness = ?, updated_at = ?
+WHERE id = ? AND state = 'claimed' AND runtime_ref = 'dispatching' AND session_id IS NULL
+`
+
+type BindTaskWorkerSessionParams struct {
+	SessionID *domain.SessionID
+	Harness   *domain.AgentHarness
+	UpdatedAt time.Time
+	ID        string
+}
+
+func (q *Queries) BindTaskWorkerSession(ctx context.Context, arg BindTaskWorkerSessionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, bindTaskWorkerSession,
+		arg.SessionID,
+		arg.Harness,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getTask = `-- name: GetTask :one
 SELECT plan_id, id, phase_id, title, prompt, workspace_key, harness, position, state, created_at, updated_at
 FROM task
@@ -533,6 +559,17 @@ func (q *Queries) InsertTaskVerificationCommand(ctx context.Context, arg InsertT
 	return err
 }
 
+const isTaskWorkerSession = `-- name: IsTaskWorkerSession :one
+SELECT EXISTS(SELECT 1 FROM task_attempt WHERE session_id = ?) AS is_task_worker
+`
+
+func (q *Queries) IsTaskWorkerSession(ctx context.Context, sessionID *domain.SessionID) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isTaskWorkerSession, sessionID)
+	var is_task_worker bool
+	err := row.Scan(&is_task_worker)
+	return is_task_worker, err
+}
+
 const leaseTaskAttemptDispatch = `-- name: LeaseTaskAttemptDispatch :execrows
 UPDATE task_attempt
 SET runtime_ref = 'dispatching', updated_at = ?
@@ -695,7 +732,11 @@ func (q *Queries) ListPendingTaskPlanProposals(ctx context.Context) ([]TaskPlanP
 }
 
 const listProjectActiveTasks = `-- name: ListProjectActiveTasks :many
-SELECT task.plan_id, task.id, task.state, task.workspace_key, task.harness
+SELECT task.plan_id, task.id, task.state, task.workspace_key,
+       CAST(COALESCE((SELECT NULLIF(a.harness, '') FROM task_attempt a
+                      WHERE a.plan_id = task.plan_id AND a.task_id = task.id
+                        AND a.state IN ('claimed', 'running', 'collecting', 'blocked')
+                      ORDER BY a.attempt_number DESC LIMIT 1), task.harness) AS TEXT) AS harness
 FROM task
 JOIN task_plan ON task_plan.id = task.plan_id
 WHERE task_plan.project_id = ?

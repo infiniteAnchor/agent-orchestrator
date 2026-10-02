@@ -8,7 +8,6 @@ package tasksched
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -222,9 +221,8 @@ func (s *Scheduler) Ready() bool {
 	return s != nil && s.ready.Load()
 }
 
-// Run reconciles once, then dispatches until ctx is cancelled. A failed
-// recovery leaves the scheduler unready so a later tick cannot launch a
-// replacement for an attempt whose launch is still ambiguous.
+// Run reconciles existing attempts until ctx is cancelled. Ticks never claim
+// new tasks: only an explicit, plan-scoped Dispatch authorizes fresh work.
 func (s *Scheduler) Run(ctx context.Context) error {
 	if err := s.Recover(ctx); err != nil {
 		return err
@@ -236,7 +234,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if _, err := s.DispatchAll(ctx); err != nil && ctx.Err() == nil {
+			if err := s.Recover(ctx); err != nil && ctx.Err() == nil {
 				return err
 			}
 		}
@@ -300,33 +298,6 @@ func (s *Scheduler) recoverPlan(ctx context.Context, projectID domain.ProjectID,
 		}
 	}
 	return nil
-}
-
-// DispatchAll claims ready work in every plan. It is a no-op until Recover
-// has finished.
-func (s *Scheduler) DispatchAll(ctx context.Context) ([]DispatchReport, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.requireReady(); err != nil {
-		return nil, err
-	}
-	plans, err := s.store.ListSchedulePlans(ctx)
-	if err != nil {
-		return nil, apierr.Internal("TASK_SCHEDULE_LOAD_FAILED", "Failed to load task plans")
-	}
-	reports := make([]DispatchReport, 0, len(plans))
-	for _, plan := range plans {
-		report, err := s.dispatchLocked(ctx, domain.ProjectID(plan.ProjectID), plan.ID)
-		if err != nil {
-			var api *apierr.Error
-			if errors.As(err, &api) && api.Code == "TASK_PLAN_NOT_FOUND" {
-				continue
-			}
-			return nil, err
-		}
-		reports = append(reports, report)
-	}
-	return reports, nil
 }
 
 // Dispatch claims ready tasks in one plan and launches each new attempt.
@@ -484,12 +455,25 @@ func (s *Scheduler) SubmitCandidate(ctx context.Context, projectID domain.Projec
 
 func (s *Scheduler) verifyAndCommit(ctx context.Context, view domain.TaskScheduleView, attempt domain.TaskAttempt, summary string) (Completion, error) {
 	dir := ""
-	record, ok, err := s.store.GetProject(ctx, view.ProjectID)
-	if err != nil {
-		return Completion{}, apierr.Internal("PROJECT_LOAD_FAILED", "Failed to load project")
-	}
-	if ok {
-		dir = record.Path
+	if attempt.SessionID != "" {
+		// Worker verification must use its isolated workspace. A failed lookup
+		// remains inconclusive rather than checking unrelated project files.
+		if locations, ok := s.launcher.(interface {
+			WorkspaceLocation(context.Context, domain.SessionID) (string, error)
+		}); ok {
+			location, err := locations.WorkspaceLocation(ctx, domain.SessionID(attempt.SessionID))
+			if err == nil {
+				dir = location
+			}
+		}
+	} else {
+		record, ok, err := s.store.GetProject(ctx, view.ProjectID)
+		if err != nil {
+			return Completion{}, apierr.Internal("PROJECT_LOAD_FAILED", "Failed to load project")
+		}
+		if ok {
+			dir = record.Path
+		}
 	}
 	var commands []string
 	for _, task := range view.Plan.Tasks {
@@ -541,6 +525,14 @@ func (s *Scheduler) reconcile(ctx context.Context, view domain.TaskScheduleView,
 		if attempt.RuntimeRef == "" || attempt.RuntimeRef == domain.TaskAttemptDispatchLease {
 			_, err := s.store.HoldAttempt(ctx, attempt.ID, s.now().UTC())
 			return err
+		}
+		outcome, err := s.launcher.Reconcile(ctx, launchRequest(view, attempt))
+		if err != nil || outcome.Disposition != LaunchStarted || outcome.RuntimeRef != attempt.RuntimeRef || (attempt.SessionID != "" && outcome.SessionID != attempt.SessionID) {
+			_, holdErr := s.store.HoldAttempt(ctx, attempt.ID, s.now().UTC())
+			if err != nil {
+				return err
+			}
+			return holdErr
 		}
 		return s.store.AlignTask(ctx, attempt.PlanID, attempt.TaskID, s.now().UTC())
 	case domain.TaskAttemptStateClaimed:

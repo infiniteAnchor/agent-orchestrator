@@ -4,6 +4,12 @@ Phase 1 headless packaging and Phase 2 remote desktop support are complete.
 Phase 3 is the durable task graph: validation, persistence, dispatch, and recovery.
 The governing design is [Headless Server Control Plane](../headless-server-control-plane.md).
 
+The daemon dispatches real worker sessions through the existing session and
+isolated workspace services. Only explicit dispatch claims currently ready
+tasks; recovery adopts or holds previously authorized attempts. Native provider
+acceptance remains untested. See the
+[runtime execution record](task-execution-runtime-gaps.md).
+
 ## Implementation slices
 
 1. **Graph contract and validation (complete).** Add domain plan, phase,
@@ -61,12 +67,15 @@ The completed contract accepts disconnected and out-of-order DAGs, rejects
 invalid graphs deterministically, and handles deep dependency chains without
 recursive cycle detection.
 
-The scheduler claims a ready task only after writing its attempt, launches that
-same attempt, and records a runtime ref only when the launcher reports a
-started worker. A verified result unlocks the next task while the first worker
+The scheduler claims a ready task only after writing its attempt and invokes
+the launcher for that same attempt. It records a runtime ref when the launcher
+reports a started worker. The current daemon launcher returns a logical
+`attempt:<id>` ref without creating a runtime, worktree, or coding-agent session.
+A verified result unlocks the next task while the first worker
 may still be alive. Recovery adopts a remembered launch, holds an ambiguous
 one, and rebuilds dependent readiness from SQLite. Clean process exit, Chat
 `turn.completed`, and a failed or unknown runtime probe do not count as success
-or as permission to start a replacement attempt. Planner automation remains
-Phase 4. The index of these contracts is
+or as permission to start a replacement attempt. Phase 4 planner automation and
+desktop task-plan review are implemented, but real launch/adoption and dispatch
+authorization remain backend follow-ups. The index of these contracts is
 [phase-3-contract-index.md](phase-3-contract-index.md).

@@ -28,11 +28,19 @@ Start with [architecture.md](architecture.md) for the current backend model and
 
 ## Active implementation
 
-Headless Phases 1 through 4 are implemented in this branch. Phase 3's contracts
+Headless Phases 1 and 2 and the Phase 3/4 domain, persistence, and API layers
+are implemented in this branch, including real task-worker launch/adoption.
+Phase 3's contracts
 are indexed in [phase-3-contract-index.md](plans/phase-3-contract-index.md).
 Phase 4 is planner automation; see its
-[execution plan](plans/phase-4-orchestrator-automation.md). Desktop review UI
-is still a later client.
+[execution plan](plans/phase-4-orchestrator-automation.md). Project boards now
+expose desktop proposal review, task schedules, explicit dispatch requests, and
+human gates; see the [desktop review plan](plans/desktop-task-plan-review.md).
+Explicit dispatch launches workers through session/workspace services; acceptance,
+gate approval, ticks, and restart do not claim new tasks. Ambiguous launches hold
+their durable attempt identity. Before Phase 5 budgets and operations, exercise
+native installed-provider acceptance; see the
+[runtime execution record](plans/task-execution-runtime-gaps.md).
 
 ## Mental model
 

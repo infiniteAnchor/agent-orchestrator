@@ -197,7 +197,11 @@ SET runtime_ref = ?, session_id = ?, harness = ?, updated_at = ?
 WHERE id = ? AND state = 'claimed' AND (runtime_ref = '' OR runtime_ref = 'dispatching');
 
 -- name: ListProjectActiveTasks :many
-SELECT task.plan_id, task.id, task.state, task.workspace_key, task.harness
+SELECT task.plan_id, task.id, task.state, task.workspace_key,
+       CAST(COALESCE((SELECT NULLIF(a.harness, '') FROM task_attempt a
+                      WHERE a.plan_id = task.plan_id AND a.task_id = task.id
+                        AND a.state IN ('claimed', 'running', 'collecting', 'blocked')
+                      ORDER BY a.attempt_number DESC LIMIT 1), task.harness) AS TEXT) AS harness
 FROM task
 JOIN task_plan ON task_plan.id = task.plan_id
 WHERE task_plan.project_id = ?
@@ -223,3 +227,11 @@ SELECT id, plan_id, task_id, attempt_id, outcome, summary, evidence, recorded_at
 FROM task_result
 WHERE plan_id = ? AND outcome = 'verified'
 ORDER BY recorded_at, id;
+
+-- name: BindTaskWorkerSession :execrows
+UPDATE task_attempt
+SET session_id = ?, harness = ?, updated_at = ?
+WHERE id = ? AND state = 'claimed' AND runtime_ref = 'dispatching' AND session_id IS NULL;
+
+-- name: IsTaskWorkerSession :one
+SELECT EXISTS(SELECT 1 FROM task_attempt WHERE session_id = ?) AS is_task_worker;

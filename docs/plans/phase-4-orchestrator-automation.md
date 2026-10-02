@@ -31,7 +31,8 @@ See the [control-plane design](../headless-server-control-plane.md) and the
    task-linked summary of at most 4096 UTF-8 bytes. A human gate is the
    durable notification: `pending`, `approved`, or `rejected`, idempotent on
    a project-scoped request key. A pending gate blocks `ClaimReadyTask`.
-   Approval does not dispatch. Rejecting a gate cancels a task that is still
+   The approval handler does not dispatch directly, but the running scheduler
+   can claim newly eligible work on its next tick. Rejecting a gate cancels a task that is still
    queued. Repeating approve or reject returns the stored resolution.
 4. **Retry, fallback, and exhaustion policy (implemented).** One decision is
    stored per attempt. An ordinary failure requeues the same task and harness
@@ -75,8 +76,8 @@ and readiness contracts.
 - Use the existing project-scoped Chat orchestrator and its configured
   permission policy. If the active orchestrator is not in Chat mode, fail the
   proposal with a safe status instead of silently changing its mode. The API
-  is the first client surface; a dedicated desktop review flow can consume it
-  in a later slice.
+  was the first client surface; project boards now provide desktop review
+  through the same typed daemon API.
 - A proposal is not a task plan and cannot enter the ready queue. Acceptance
   is the only operation that turns its validated graph into an executable
   plan. Rejecting or failing proposal generation never schedules workers.
@@ -115,6 +116,20 @@ and readiness contracts.
   dispatch workers. Only the existing explicit dispatch route does so.
 - API tests prove active-project ownership, error-envelope behavior, and LAN
   response safety; generated OpenAPI and TypeScript artifacts are current.
+
+### Current runtime and desktop boundary
+
+Proposal acceptance and human-gate approval save facts without authorizing launch.
+Only explicit plan dispatch claims currently ready tasks. Background ticks and
+restart recover existing attempts, without automatic plan activation. The daemon
+now launches real sessions through its existing isolated workspace services and
+atomically binds each attempt before workspace/controller side effects. Ambiguous
+launches are held. See [task execution runtime gaps](task-execution-runtime-gaps.md)
+for the implementation record and remaining native acceptance checks.
+
+Project boards now expose proposal review, accepted plans, task schedules,
+attempt/session links, immediate dispatch requests, and human-gate decisions.
+Cloud and mock preview projects do not expose these daemon-only controls.
 
 The implementation exposes `POST/GET /api/v1/projects/{id}/task-plan-proposals`,
 proposal detail, and explicit `accept` / `reject` actions. Planner work resumes

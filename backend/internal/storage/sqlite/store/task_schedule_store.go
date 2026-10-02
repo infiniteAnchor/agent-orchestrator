@@ -73,6 +73,11 @@ func (s *Store) LoadTaskSchedule(ctx context.Context, projectID domain.ProjectID
 }
 
 func (s *Store) scheduleView(ctx context.Context, q *gen.Queries, plan domain.TaskPlan) (domain.TaskScheduleView, error) {
+	projectRow, err := q.GetProject(ctx, domain.ProjectID(plan.ProjectID))
+	if err != nil {
+		return domain.TaskScheduleView{}, fmt.Errorf("load project task defaults: %w", err)
+	}
+	defaultHarness := string(projectRowFromGen(projectRow).Config.Worker.Harness)
 	taskRows, err := q.ListTasks(ctx, plan.ID)
 	if err != nil {
 		return domain.TaskScheduleView{}, fmt.Errorf("list tasks for plan %s: %w", plan.ID, err)
@@ -87,6 +92,9 @@ func (s *Store) scheduleView(ctx context.Context, q *gen.Queries, plan domain.Ta
 	}
 	nodes := make([]domain.ScheduleNode, 0, len(taskRows))
 	for _, row := range taskRows {
+		if row.Harness == "" {
+			row.Harness = defaultHarness
+		}
 		nodes = append(nodes, domain.ScheduleNode{
 			PlanID: plan.ID, ID: row.ID, State: row.State,
 			DependsOn:    append([]string(nil), deps[row.ID]...),
@@ -117,6 +125,9 @@ func (s *Store) scheduleView(ctx context.Context, q *gen.Queries, plan domain.Ta
 	}
 	active := make([]domain.ScheduleNode, 0, len(activeRows))
 	for _, row := range activeRows {
+		if row.Harness == "" {
+			row.Harness = defaultHarness
+		}
 		active = append(active, domain.ScheduleNode{
 			PlanID: row.PlanID, ID: row.ID, State: row.State,
 			WorkspaceKey: row.WorkspaceKey, Harness: row.Harness,
