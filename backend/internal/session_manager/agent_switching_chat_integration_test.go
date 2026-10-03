@@ -62,6 +62,7 @@ func (l integrationChatLauncher) StartChat(ctx context.Context, cfg ChatStart) (
 		ControllerGeneration:    cfg.ControllerGeneration,
 		RequireNativeHistory:    cfg.RequireNativeHistory,
 		SkipNativeHistoryImport: cfg.SkipNativeHistoryImport,
+		ReconnectOnly:           cfg.ReconnectOnly,
 		ControllerReady: func(result chatsvc.StartResult) (chatsvc.ControllerCommit, error) {
 			if cfg.ControllerReady == nil {
 				return chatsvc.ControllerCommit{}, nil

@@ -247,6 +247,8 @@ type ChatStartConfig struct {
 
 // ChatResumeConfig reattaches to a provider conversation after a restart.
 type ChatResumeConfig struct {
+	// ReconnectOnly forbids starting a provider when no live host can be attached.
+	ReconnectOnly          bool
 	SessionID              domain.SessionID
 	ProviderConversationID string
 	DataDir                string

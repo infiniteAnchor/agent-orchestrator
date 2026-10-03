@@ -11,6 +11,10 @@
 
 ### Fixed
 
+- Reconnected task-owned Codex Chat controllers to surviving detached hosts
+  without launching replacement providers, replaying prompts, or dispatching
+  new tasks; missing or uncertain hosts continue to hold their attempts.
+
 - Planner guidance now includes a valid task-graph example and explains phase
   identities, shell quoting, and independent worker workspaces.
 - Updated Codex protocol generation and prevented discriminator-name collisions.

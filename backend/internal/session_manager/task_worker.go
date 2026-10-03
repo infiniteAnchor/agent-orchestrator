@@ -3,6 +3,7 @@ package sessionmanager
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
@@ -60,6 +61,29 @@ func (m *Manager) reconcileTaskWorker(ctx context.Context, rec domain.SessionRec
 	}
 	if !bound {
 		return false, nil
+	}
+	if !rec.IsTerminated && rec.Kind == domain.KindWorker &&
+		domain.NormalizeSessionMode(rec.Mode) == domain.SessionModeChat &&
+		rec.Harness == domain.HarnessCodex && m.chat != nil && !m.chat.HasLiveChatController(rec.ID) {
+		if rec.Metadata.ProviderConversationID == "" || rec.Metadata.ControllerGeneration == "" {
+			return true, fmt.Errorf("reconcile %s task worker has incomplete Chat ownership", rec.ID)
+		}
+		info, err := os.Stat(rec.Metadata.WorkspacePath)
+		if err != nil || !info.IsDir() {
+			return true, fmt.Errorf("reconcile %s task worker workspace unavailable", rec.ID)
+		}
+		project, err := m.loadProject(ctx, rec.ProjectID)
+		if err != nil {
+			return true, err
+		}
+		// Attach the existing host only. Do not restore a workspace, replay a
+		// prompt, or fall back to native resume in a replacement provider.
+		_, err = m.resumeChatControllerWithPolicy(ctx, "reconcile task worker", rec, project, ports.WorkspaceInfo{
+			Path: rec.Metadata.WorkspacePath, RepoPath: rec.Metadata.WorkspaceRepoPath, Branch: rec.Metadata.Branch,
+		}, false, "", true)
+		if err != nil {
+			return true, err
+		}
 	}
 	alive, err := m.TaskWorkerAlive(ctx, rec.ID)
 	if err != nil {

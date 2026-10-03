@@ -3772,7 +3772,7 @@ func TestServiceLiveReconnectKeepsDurableRunningTurnBusy(t *testing.T) {
 	t.Cleanup(func() { second.StopAll(context.Background()) })
 	secondController, err := second.Start(context.Background(), chatsvc.StartConfig{
 		SessionID: testSession, ProjectID: testProject, Harness: domain.HarnessCodex,
-		WorkspacePath: t.TempDir(), ProviderConversationID: firstProvider.ProviderConversationID(),
+		ReconnectOnly: true, WorkspacePath: t.TempDir(), ProviderConversationID: firstProvider.ProviderConversationID(),
 	})
 	if err != nil {
 		t.Fatalf("reconnect Start: %v", err)

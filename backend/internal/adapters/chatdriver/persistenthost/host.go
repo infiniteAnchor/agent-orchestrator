@@ -62,11 +62,13 @@ type Descriptor struct {
 
 // Config identifies one provider process and its AO session ownership.
 type Config struct {
-	SessionID string
-	DataDir   string
-	Workdir   string
-	Env       []string
-	Argv      []string
+	// ReconnectOnly permits attachment but never starts or replaces a host.
+	ReconnectOnly bool
+	SessionID     string
+	DataDir       string
+	Workdir       string
+	Env           []string
+	Argv          []string
 }
 
 // Transport is one authenticated attachment to a persistent provider host.
@@ -258,6 +260,9 @@ func ConnectOrStart(ctx context.Context, cfg Config) (*Transport, error) {
 		// A malformed or unreadable ownership record is not proof that no host
 		// exists. Fail closed instead of launching a competing process.
 		return nil, fmt.Errorf("%w: %w", ErrOwnershipInconclusive, err)
+	}
+	if cfg.ReconnectOnly {
+		return nil, ErrOwnershipInconclusive
 	}
 	if len(cfg.Argv) == 0 || !filepath.IsAbs(cfg.Workdir) {
 		return nil, errors.New("chat host start requires provider argv and absolute workdir")

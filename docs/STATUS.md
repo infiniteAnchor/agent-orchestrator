@@ -238,8 +238,11 @@ surface (`npm run sqlc`, `npm run api`).
   waits for task recovery. Explicit dispatch creates real worker sessions with
   isolated workspaces and durable attempt/session ownership. Recovery adopts
   existing workers or holds uncertain launches. Native Codex task completion and
-  desktop transport passed isolated acceptance; detached Chat crash recovery
-  held the original attempt rather than reconnecting it. See the
+  desktop transport passed isolated acceptance. Detached Codex task-worker recovery
+  now attaches only to a surviving host, preserving attempt/session identity;
+  missing or uncertain hosts still hold work. Fake-provider and disposable-store
+  regressions cover reconnect without prompt replay or dispatch; native crash
+  acceptance remains to be repeated. See the
   [native acceptance record](plans/task-execution-acceptance.md),
   [execution plan](plans/phase-3-durable-task-graph.md) and
   [contract index](plans/phase-3-contract-index.md).
@@ -250,7 +253,7 @@ surface (`npm run sqlc`, `npm run api`).
   within concurrency/workspace limits. A pending human gate blocks only its task.
   Desktop review is available from project boards. See the
   [Phase 4 execution plan](plans/phase-4-orchestrator-automation.md).
-- **Next headless work**: address the detached Chat recovery limitation and verify
+- **Next headless work**: repeat native detached Chat crash acceptance and verify
   remaining CI/platform gates before Phase 5 cost controls. Native task-worker
   completion and desktop local/remote acceptance are recorded in the
   [acceptance handoff](plans/task-execution-acceptance.md).

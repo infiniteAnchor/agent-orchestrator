@@ -94,6 +94,8 @@ type ChatStart struct {
 	// boundary is committed inside ControllerReady, so old provider events must
 	// not be projected into the source branch before that atomic write.
 	SkipNativeHistoryImport bool
+	// ReconnectOnly requires a surviving detached provider; never launch a replacement.
+	ReconnectOnly bool
 	// ControllerReady commits the durable controller facts before the provider
 	// event stream is consumed. This prevents an immediate exit from racing a
 	// later MarkSpawned write back to idle.
@@ -360,6 +362,13 @@ func (m *Manager) resumeChatController(
 	requireNativeHistory bool,
 	controllerGeneration string,
 ) (RestoreResult, error) {
+	return m.resumeChatControllerWithPolicy(ctx, operation, rec, project, ws, requireNativeHistory, controllerGeneration, false)
+}
+
+func (m *Manager) resumeChatControllerWithPolicy(
+	ctx context.Context, operation string, rec domain.SessionRecord, project domain.ProjectRecord,
+	ws ports.WorkspaceInfo, requireNativeHistory bool, controllerGeneration string, reconnectOnly bool,
+) (RestoreResult, error) {
 	if m.chat == nil {
 		return RestoreResult{}, fmt.Errorf("%s %s: %w: chat mode is not available in this build",
 			operation, rec.ID, ports.ErrChatUnsupported)
@@ -437,6 +446,7 @@ func (m *Manager) resumeChatController(
 		// second restart can still prove exact target ownership.
 		ControllerGeneration: controllerGeneration,
 		RequireNativeHistory: requireNativeHistory,
+		ReconnectOnly:        reconnectOnly,
 		ControllerReady: func(started ChatStarted) (ChatControllerCommit, error) {
 			metadata := rec.Metadata
 			metadata.WorkspacePath = ws.Path
