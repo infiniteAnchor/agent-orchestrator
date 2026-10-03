@@ -12,6 +12,9 @@ var ErrSessionNotFound = errors.New("session not found")
 // SpawnConfig is the request to start a new session: which project/issue, which
 // agent harness, and the branch/prompt the agent launches with.
 type SpawnConfig struct {
+	// TaskAttemptID is an internal scheduler binding, never a public spawn option.
+	TaskAttemptID string
+
 	ProjectID domain.ProjectID
 	IssueID   domain.IssueID
 	// TrackerProvider is the issue-tracker provider hint from the CLI's

@@ -313,8 +313,8 @@ export type WorkspaceSummary = {
 	 * `kind === CLOUD_PROJECT_KIND`.
 	 */
 	kind?: ProjectKind | typeof CLOUD_PROJECT_KIND;
-	/** Local checkout path; empty string for cloud projects (no local folder). */
-	path: string;
+	/** Local checkout path; omitted by remote daemons and empty for cloud projects. */
+	path?: string;
 	folderMissing?: boolean;
 	workspaceRepos?: WorkspaceRepoSummary[];
 	type?: "main" | "worktree";

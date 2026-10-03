@@ -462,6 +462,28 @@ type PRURLAlias struct {
 	CanonicalURL string
 }
 
+type PlannerEventCursor struct {
+	Consumer  string
+	LastSeq   int64
+	UpdatedAt string
+}
+
+type PlannerFollowup struct {
+	ID             string
+	ProjectID      string
+	PlanID         string
+	TaskID         string
+	AttemptID      string
+	SourceSeq      int64
+	State          string
+	TurnID         string
+	OrchestratorID string
+	ErrorCode      string
+	Summary        string
+	CreatedAt      string
+	UpdatedAt      string
+}
+
 type Project struct {
 	ID            domain.ProjectID
 	Path          string
@@ -605,6 +627,136 @@ type ShellTerminal struct {
 	AppRunID   string
 	CreatedAt  time.Time
 	SessionID  sql.NullString
+}
+
+type Task struct {
+	PlanID       string
+	ID           string
+	PhaseID      sql.NullString
+	Title        string
+	Prompt       string
+	Position     int64
+	State        domain.TaskState
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	WorkspaceKey string
+	Harness      string
+}
+
+type TaskAttempt struct {
+	ID            string
+	PlanID        string
+	TaskID        string
+	AttemptNumber int64
+	State         domain.TaskAttemptState
+	SessionID     *domain.SessionID
+	Harness       *domain.AgentHarness
+	ClaimedAt     time.Time
+	StartedAt     sql.NullTime
+	FinishedAt    sql.NullTime
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	RuntimeRef    string
+}
+
+type TaskDependency struct {
+	PlanID          string
+	TaskID          string
+	DependsOnTaskID string
+	Position        int64
+}
+
+type TaskHandoff struct {
+	ID        string
+	ProjectID string
+	PlanID    string
+	TaskID    string
+	AttemptID string
+	Summary   string
+	CreatedAt string
+}
+
+type TaskHumanGate struct {
+	ID         string
+	ProjectID  string
+	PlanID     string
+	TaskID     string
+	AttemptID  string
+	RequestKey string
+	State      string
+	Summary    string
+	CreatedAt  string
+	UpdatedAt  string
+	ResolvedAt sql.NullString
+}
+
+type TaskPhase struct {
+	PlanID   string
+	ID       string
+	Title    string
+	Position int64
+}
+
+type TaskPlan struct {
+	ID        string
+	ProjectID domain.ProjectID
+	Title     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type TaskPlanProposal struct {
+	ID             string
+	ProjectID      string
+	RequestKey     string
+	Specification  string
+	Status         string
+	OrchestratorID string
+	TurnID         string
+	GraphJson      string
+	ErrorCode      string
+	ErrorMessage   string
+	AcceptedAt     sql.NullString
+	RejectedAt     sql.NullString
+	CreatedAt      string
+	UpdatedAt      string
+}
+
+type TaskResult struct {
+	ID         string
+	PlanID     string
+	TaskID     string
+	AttemptID  string
+	Outcome    domain.TaskResultOutcome
+	Summary    sql.NullString
+	Evidence   string
+	RecordedAt time.Time
+}
+
+type TaskRetryDecision struct {
+	ID        string
+	ProjectID string
+	PlanID    string
+	TaskID    string
+	AttemptID string
+	Action    string
+	Harness   string
+	Reason    string
+	CreatedAt string
+}
+
+type TaskRetryPolicy struct {
+	ProjectID       string
+	MaxAttempts     int64
+	FallbackHarness string
+	UpdatedAt       string
+}
+
+type TaskVerificationCommand struct {
+	PlanID   string
+	TaskID   string
+	Position int64
+	Command  string
 }
 
 type TelemetryEvent struct {

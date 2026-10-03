@@ -282,6 +282,26 @@ export async function installFakeBridge(page: Page, opts: FakeBridgeOptions = {}
 					closeStream: () => undefined,
 					onStreamEvent: unsubscribe,
 				},
+				remoteDaemon: {
+					request: async () => ({ status: 503, headers: {}, body: "" }),
+					openStream: async () => ({ streamId: "remote_stream_test" }),
+					closeStream: () => undefined,
+					onStreamEvent: unsubscribe,
+				},
+				remoteConnection: {
+					get: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					enroll: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					setActive: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					remove: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					verifyIdentity: async () => ({ ok: false as const, reason: "no_remote_profile" as const, message: "No remote profile in e2e." }),
+				},
+				remoteMux: {
+					connect: async () => ({ connectionId: "remote_mux_test" }),
+					subscribe: () => undefined,
+					send: () => undefined,
+					close: () => undefined,
+					onEvent: unsubscribe,
+				},
 			} satisfies AoBridge;
 			(window as unknown as { ao: unknown }).ao = ao;
 		},
@@ -804,6 +824,26 @@ export async function installFakeAgent(page: Page, opts: FakeAgentOptions = {}):
 					openStream: async () => ({ streamId: "stream_test" }),
 					closeStream: () => undefined,
 					onStreamEvent: unsubscribe,
+				},
+				remoteDaemon: {
+					request: async () => ({ status: 503, headers: {}, body: "" }),
+					openStream: async () => ({ streamId: "remote_stream_test" }),
+					closeStream: () => undefined,
+					onStreamEvent: unsubscribe,
+				},
+				remoteConnection: {
+					get: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					enroll: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					setActive: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					remove: async () => ({ active: { kind: "local" as const }, profiles: [] }),
+					verifyIdentity: async () => ({ ok: false as const, reason: "no_remote_profile" as const, message: "No remote profile in e2e." }),
+				},
+				remoteMux: {
+					connect: async () => ({ connectionId: "remote_mux_test" }),
+					subscribe: () => undefined,
+					send: () => undefined,
+					close: () => undefined,
+					onEvent: unsubscribe,
 				},
 			} satisfies AoBridge;
 			(window as unknown as { ao: unknown }).ao = ao;

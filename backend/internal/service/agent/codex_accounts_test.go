@@ -227,7 +227,7 @@ func supportedCodexAccountCapabilities() domain.CodexAccountCapabilities {
 
 func newTestCodexAccountManager(t *testing.T, factory ports.CodexAccountClientFactory, state CodexAccountStateStore) *codexAccountManager {
 	t.Helper()
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	return newCodexAccountManager(context.Background(),
 		filepath.Join(root, "accounts"), filepath.Join(root, "pending-accounts"),
 		filepath.Join(root, "switch-staging"), filepath.Join(root, "device-home"),
@@ -651,7 +651,7 @@ func TestLoginCloseFailureRetainsPendingOperation(t *testing.T) {
 }
 
 func TestBootstrapImportsOpaqueDeviceCredentialWithoutMutatingDeviceHome(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	device := filepath.Join(root, "device")
 	if err := ensurePrivateDirectory(device); err != nil {
 		t.Fatal(err)
@@ -686,7 +686,7 @@ func TestBootstrapImportsOpaqueDeviceCredentialWithoutMutatingDeviceHome(t *test
 }
 
 func TestGlobalReconciliationKeepsMatchingDeviceAccountActiveWithoutProactiveRefresh(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -748,7 +748,7 @@ func TestGlobalReconciliationKeepsMatchingDeviceAccountActiveWithoutProactiveRef
 }
 
 func TestGlobalReconciliationInconclusiveReadPreservesActiveAccount(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -790,7 +790,7 @@ func TestGlobalReconciliationInconclusiveReadPreservesActiveAccount(t *testing.T
 }
 
 func TestGlobalReconciliationExplicitSignedOutClearsActiveAccount(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -814,7 +814,7 @@ func TestGlobalReconciliationExplicitSignedOutClearsActiveAccount(t *testing.T) 
 }
 
 func TestGlobalReconciliationSerializesCredentialMutationWithLogout(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -897,7 +897,7 @@ func TestGlobalAccountMatchingUsesUniqueOpaqueCredentialIdentity(t *testing.T) {
 }
 
 func TestGlobalReconciliationAutoImportsExternalAccountChanges(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -971,7 +971,7 @@ func TestGlobalReconciliationAutoImportsExternalAccountChanges(t *testing.T) {
 }
 
 func TestGlobalReconciliationReactivatesMatchingSignedOutAccount(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -1010,7 +1010,7 @@ func TestGlobalReconciliationReactivatesMatchingSignedOutAccount(t *testing.T) {
 }
 
 func TestUnmanagedGlobalCredentialDoesNotBlockNormalAuthentication(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -1047,7 +1047,7 @@ func TestUnmanagedGlobalCredentialDoesNotBlockNormalAuthentication(t *testing.T)
 }
 
 func TestUnmanagedGlobalStatePreservesActiveSlotProjection(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -1102,7 +1102,7 @@ type apiKeySwitchFixture struct {
 
 func newAPIKeySwitchFixture(t *testing.T) apiKeySwitchFixture {
 	t.Helper()
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -1237,7 +1237,7 @@ func TestRestoreCodexAccountCredentialRejectsExternalAPIKeyReplacement(t *testin
 }
 
 func TestCredentialActivationDoesNotOverwriteExternalRace(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)
@@ -1287,7 +1287,7 @@ func TestCredentialActivationDoesNotOverwriteExternalRace(t *testing.T) {
 }
 
 func TestCredentialActivationVerifiesWithoutASecondProactiveRefresh(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)

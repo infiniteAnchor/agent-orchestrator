@@ -2,6 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Folder, LayoutDashboard, Plus, Trash2 } from "lucide-react";
+import { TaskPlansButton } from "./TaskPlansDialog";
+import { usesPreviewWorkspaceData } from "../lib/preview-mode";
 import { useEffect, useState, type ReactNode } from "react";
 import { animate, LayoutGroup, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { NotificationCenter } from "./NotificationCenter";
@@ -261,6 +263,7 @@ export function ShellTopbar({
 			>
 				{!boardActionsInPanel && isProjectBoardRoute ? (
 					<>
+						{projectId && project && project.kind !== "cloud" && !usesPreviewWorkspaceData ? <TaskPlansButton key={projectId} projectId={projectId} /> : null}
 						{boardSpawnError ? (
 							<TopbarActionError className="max-w-content-max truncate" title={boardSpawnError}>
 								{boardSpawnError}

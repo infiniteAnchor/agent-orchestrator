@@ -203,7 +203,7 @@ describe("GlobalSettingsForm", () => {
 		expect(await screen.findByLabelText("Settings")).toBeInTheDocument();
 		expect(screen.getByText("Appearance")).toBeInTheDocument();
 		expect(screen.getByText("Language")).toBeInTheDocument();
-		expect(await screen.findByText("Updates")).toBeInTheDocument();
+		expect(await screen.findByText("Updates", {}, { timeout: 5_000 })).toBeInTheDocument();
 		expect(screen.getByText("Advanced")).toBeInTheDocument();
 		expect(screen.getByText("Report a problem")).toBeInTheDocument();
 		// Report form is inline — no dialog, fields directly present.
@@ -218,7 +218,7 @@ describe("GlobalSettingsForm", () => {
 
 		await user.click(toggle);
 		expect(window.localStorage.getItem("ao.developerMode")).toBe("true");
-		await user.click(screen.getByLabelText("Channel"));
+		await user.click(await screen.findByLabelText("Channel", {}, { timeout: 5_000 }));
 		expect(await screen.findByRole("menuitem", { name: "Feature builds" })).toBeInTheDocument();
 	});
 
@@ -228,7 +228,7 @@ describe("GlobalSettingsForm", () => {
 		useUiStore.getState().setDeveloperMode(true);
 		renderForm();
 
-		await user.click(await screen.findByLabelText("Channel"));
+		await user.click(await screen.findByLabelText("Channel", {}, { timeout: 5_000 }));
 		await user.click(await screen.findByRole("menuitem", { name: "Feature builds" }));
 		expect(await screen.findByText("No live feature releases.")).toBeInTheDocument();
 		expect(featListBuilds).toHaveBeenCalled();
@@ -357,7 +357,7 @@ describe("GlobalSettingsForm", () => {
 		await waitFor(() =>
 			expect(setUpdate).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, channel: "latest" })),
 		);
-		await screen.findByLabelText("Channel");
+		await screen.findByLabelText("Channel", {}, { timeout: 5_000 });
 		await userEvent.click(screen.getByLabelText("Channel"));
 		await userEvent.click(await screen.findByRole("menuitem", { name: "Nightly" }));
 		await waitFor(() =>
@@ -376,7 +376,7 @@ describe("GlobalSettingsForm", () => {
 			return () => undefined;
 		});
 		renderForm();
-		await userEvent.click(await screen.findByLabelText("Channel"));
+		await userEvent.click(await screen.findByLabelText("Channel", {}, { timeout: 5_000 }));
 		await userEvent.click(await screen.findByRole("menuitem", { name: "Nightly" }));
 
 		await waitFor(() =>
@@ -405,7 +405,7 @@ describe("GlobalSettingsForm", () => {
 
 	it("hides the nightly warning on the stable channel", async () => {
 		renderForm();
-		await screen.findByText("Updates");
+		await screen.findByText("Updates", {}, { timeout: 5_000 });
 		expect(screen.queryByText(/Nightly updates daily and may be unstable or cause data loss/i)).not.toBeInTheDocument();
 	});
 

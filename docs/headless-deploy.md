@@ -73,16 +73,18 @@ export AO_HEADLESS=on
 
 ## Readiness probes
 
-`GET /healthz` and `GET /readyz` return the same static probe payload once the
-HTTP server is listening (`daemonProbePayload` in
-`backend/internal/httpd/router.go`). They report process metadata (status,
-service name, pid, paths). They do **not** wait for background Chat-host or
-runtime reconciliation.
+`GET /healthz` is liveness. It returns 200 once the HTTP server is listening.
 
-Before bind, boot still runs blocking `ReconcileStartupSafety`. If that fails,
-the daemon exits and never listens. After listen, Chat-host / session /
-runtime reconciliation continues in the background. Treat `/readyz` as
-“listening,” not “recovery finished.”
+`GET /readyz` is task-recovery readiness. While the scheduler is still
+adopting or holding attempts from the previous process it returns 503 with
+`status=task_recovery_pending` and `taskRecovery=pending`. After that recovery
+finishes it returns 200 with `status=ready` and `taskRecovery=complete`.
+Dispatch does not claim new work during the 503 window. Loopback responses
+still include the daemon identity paths; LAN responses omit them.
+
+`/healthz` and `/readyz` do not wait for background Chat-host or session
+reconciliation. Before bind, boot still runs blocking `ReconcileStartupSafety`.
+If that fails, the daemon exits and never listens.
 
 ## Opt-in LAN listener
 

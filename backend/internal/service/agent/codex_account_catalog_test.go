@@ -11,6 +11,17 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 )
 
+// Credential fixtures must satisfy the vault's ancestor checks even when the
+// test process has a group-writable umask.
+func privateCodexTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 const testAccountID = "72d4db6e-da2c-414c-a6a9-fdbd09a006b6"
 
 func commitTestAccount(t *testing.T, catalog *codexAccountCatalog, pendingRoot, operationID string, observed ports.CodexAccountObservation) codexAccountRecord {
@@ -31,7 +42,7 @@ func commitTestAccount(t *testing.T, catalog *codexAccountCatalog, pendingRoot, 
 }
 
 func TestCodexAccountCatalogCommitsStrictPrivateOpaqueSlot(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "accounts")
+	root := filepath.Join(privateCodexTempDir(t), "accounts")
 	pending := filepath.Join(filepath.Dir(root), "pending-accounts")
 	catalog := newCodexAccountCatalog(root, nil)
 	catalog.newID = func() string { return testAccountID }
@@ -79,7 +90,7 @@ func TestCodexAccountCatalogCommitsStrictPrivateOpaqueSlot(t *testing.T) {
 }
 
 func TestCodexAccountCatalogAllowsDuplicateEmailAndOrdersByCreation(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "accounts")
+	root := filepath.Join(privateCodexTempDir(t), "accounts")
 	pending := filepath.Join(filepath.Dir(root), "pending-accounts")
 	catalog := newCodexAccountCatalog(root, nil)
 	ids := []string{testAccountID, "bb1e9a5d-37ad-43f8-83bd-13de8168f8af"}
@@ -113,7 +124,7 @@ func TestCodexAccountCatalogAllowsDuplicateEmailAndOrdersByCreation(t *testing.T
 }
 
 func TestCodexAccountCatalogSurfacesUnsafeAndMalformedSlotsWithoutMetadataLeak(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "accounts")
+	root := filepath.Join(privateCodexTempDir(t), "accounts")
 	if err := ensurePrivateDirectory(root); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +151,7 @@ func TestCodexAccountCatalogSurfacesUnsafeAndMalformedSlotsWithoutMetadataLeak(t
 }
 
 func TestCodexAccountCatalogRejectsSymlinkedCredentialHome(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "accounts")
+	root := filepath.Join(privateCodexTempDir(t), "accounts")
 	pending := filepath.Join(filepath.Dir(root), "pending-accounts")
 	catalog := newCodexAccountCatalog(root, nil)
 	catalog.newID = func() string { return testAccountID }
@@ -149,7 +160,7 @@ func TestCodexAccountCatalogRejectsSymlinkedCredentialHome(t *testing.T) {
 	if err := os.RemoveAll(home); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(t.TempDir(), home); err != nil {
+	if err := os.Symlink(privateCodexTempDir(t), home); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	if err := catalog.refresh(); err != nil {
@@ -162,7 +173,7 @@ func TestCodexAccountCatalogRejectsSymlinkedCredentialHome(t *testing.T) {
 }
 
 func TestCodexAccountCatalogRetainsSignedOutSlotAndReplacesItsCredential(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "accounts")
+	root := filepath.Join(privateCodexTempDir(t), "accounts")
 	pending := filepath.Join(filepath.Dir(root), "pending-accounts")
 	catalog := newCodexAccountCatalog(root, nil)
 	catalog.newID = func() string { return testAccountID }
@@ -205,7 +216,7 @@ func TestCodexAccountCatalogRetainsSignedOutSlotAndReplacesItsCredential(t *test
 }
 
 func TestCodexAccountCatalogDeletesSignedOutSlot(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "accounts")
+	root := filepath.Join(privateCodexTempDir(t), "accounts")
 	pending := filepath.Join(filepath.Dir(root), "pending-accounts")
 	catalog := newCodexAccountCatalog(root, nil)
 	catalog.newID = func() string { return testAccountID }

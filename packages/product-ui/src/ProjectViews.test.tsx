@@ -134,6 +134,20 @@ describe("project presentation", () => {
 		expect(onRetry).toHaveBeenCalledOnce();
 	});
 
+	it("omits the local folder row for remote project settings", () => {
+		render(
+			<ProjectGeneralSettingsView
+				displayName="Remote project"
+				labels={{ title: "Identity", name: "Project name", id: "ID", kind: "Kind", path: "Path", repo: "Repository", workspaceRepos: "Repositories", workspaceReposEmpty: "None", editName: "Edit name" }}
+				onDisplayNameChange={vi.fn()}
+				project={{ id: "remote", kindLabel: "Project", repo: "acme/remote" }}
+			/>,
+		);
+
+		expect(screen.queryByText("Path")).not.toBeInTheDocument();
+		expect(screen.getByText("acme/remote")).toBeInTheDocument();
+	});
+
 	it("renders project identity and workspace repository summaries", () => {
 		render(
 			<ProjectGeneralSettingsView

@@ -954,13 +954,20 @@ func (g *generator) renderFlattenedUnion(
 	emitted[tagType] = true
 	fmt.Fprintf(b, "// %s is the discriminator of %s.\ntype %s string\n\nconst (\n", tagType, name, tagType)
 	seen := map[string]bool{}
+	names := map[string]bool{}
 	sort.Strings(tagValues)
 	for _, v := range tagValues {
 		if seen[v] {
 			continue
 		}
 		seen[v] = true
-		fmt.Fprintf(b, "\t%s%s %s = %q\n", tagType, exportName(v), tagType, v)
+		base := tagType + exportName(v)
+		constant := base
+		for suffix := 2; names[constant]; suffix++ {
+			constant = base + fmt.Sprint(suffix)
+		}
+		names[constant] = true
+		fmt.Fprintf(b, "\t%s %s = %q\n", constant, tagType, v)
 	}
 	b.WriteString(")\n\n")
 }

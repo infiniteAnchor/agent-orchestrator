@@ -269,7 +269,7 @@ export function buildCommands(ctx: CommandPaletteContext, t: TFunction = appI18n
 			id: `project:${workspace.id}`,
 			group: "projects",
 			title: workspace.name,
-			keywords: [workspace.path],
+			keywords: workspace.path ? [workspace.path] : [],
 			action: { kind: "navigate", target: { to: "/projects/$projectId", params: { projectId: workspace.id } } },
 		});
 	}

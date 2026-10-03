@@ -55,7 +55,7 @@ class EventSourceStub {
 		this.handlers.set(type, listener);
 	}
 	emit(type: string, data: string) {
-		this.handlers.get(type)?.({ data } as unknown as Event);
+		this.handlers.get(type)?.({ type, data } as unknown as Event);
 	}
 	close() {
 		this.closed = true;
@@ -134,8 +134,28 @@ describe("createEventTransport", () => {
 		expect(cdcSources()[0].listeners).toContain("session_updated");
 		expect(cdcSources()[0].listeners).toContain("review_run_created");
 		expect(cdcSources()[0].listeners).toContain("review_run_updated");
+		expect(cdcSources()[0].listeners).toContain("task_plan_created");
+		expect(cdcSources()[0].listeners).toContain("task_attempt_updated");
 		expect(cdcSources()[0].onmessage).toBeTypeOf("function");
 		expect(accountSources()[0].listeners).toContain("codex_account");
+	});
+
+	it("invalidates task-plan data for the project named by task CDC", async () => {
+		vi.useFakeTimers();
+		try {
+			const client = fakeQueryClient();
+			createEventTransport(client).connect();
+			cdcSources()[0].emit("task_updated", JSON.stringify({ projectId: "project-a", payload: { planId: "plan-1" } }));
+			await vi.advanceTimersByTimeAsync(150);
+			expect(vi.mocked(client.invalidateQueries).mock.calls.some(([filters]) =>
+				JSON.stringify(filters?.queryKey ?? []) === JSON.stringify(["task-plans", "project-a"]),
+			)).toBe(true);
+			expect(vi.mocked(client.invalidateQueries).mock.calls.some(([filters]) =>
+				JSON.stringify(filters?.queryKey ?? []) === JSON.stringify(["task-plans", "project-b"]),
+			)).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("does not reconnect when a daemon status keeps the same base URL", () => {
@@ -228,6 +248,7 @@ describe("createEventTransport", () => {
 			expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["session-agent-switches"] }, { cancelRefetch: false });
 			expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["session-scm-summary"] }, { cancelRefetch: false });
 			expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["session-usage"] }, { cancelRefetch: false });
+			expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["task-plans"] }, { cancelRefetch: false });
 		} finally {
 			vi.useRealTimers();
 		}

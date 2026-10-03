@@ -414,7 +414,7 @@ function SettingsBody({
 							id: project.id,
 							kindLabel: projectKindLabel(project.kind, t),
 							path: project.path,
-							pathHref: `file://${encodeURI(project.path)}`,
+							pathHref: project.path ? `file://${encodeURI(project.path)}` : undefined,
 							repo: project.repo,
 							repoHref: project.repo ? repositoryHref(project.repo) : undefined,
 							workspaceRepos: project.kind === "workspace" ? project.workspaceRepos ?? [] : undefined,

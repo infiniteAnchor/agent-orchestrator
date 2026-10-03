@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	moderncsqlite "modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
-
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/storage/sqlite/gen"
 )
@@ -278,11 +275,6 @@ func (s *Store) getOpenNotificationByDedupe(ctx context.Context, rec domain.Noti
 		return domain.NotificationRecord{}, false, fmt.Errorf("lookup open notification dedupe: %w", err)
 	}
 	return notificationFromGen(row), true, nil
-}
-
-func isSQLiteUnique(err error) bool {
-	var sqliteErr *moderncsqlite.Error
-	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
 }
 
 func notificationFromGen(row gen.Notification) domain.NotificationRecord {

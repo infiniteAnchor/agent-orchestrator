@@ -35,6 +35,230 @@ type ProjectIDParam struct {
 	ID string `path:"id" description:"Project identifier (registry key)."`
 }
 
+// TaskPlanIDParam documents the nested task-plan resource identifier.
+type TaskPlanIDParam struct {
+	PlanID string `path:"planId" description:"Durable task plan identifier."`
+}
+
+// TaskIDParam documents one task inside a task plan.
+type TaskIDParam struct {
+	TaskID string `path:"taskId" description:"Task identifier within the plan."`
+}
+
+// ListTaskPlansQuery bounds one newest-first page of plan summaries.
+type ListTaskPlansQuery struct {
+	Limit  int    `query:"limit,omitempty" minimum:"1" maximum:"100" description:"Maximum plans to return. Defaults to 50."`
+	Cursor string `query:"cursor,omitempty" description:"Opaque cursor returned by the previous page."`
+}
+
+// TaskPlanPhaseResponse is one presentation-only phase in a task graph.
+type TaskPlanPhaseResponse struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// TaskPlanTaskResponse is one declared task and its graph edges.
+type TaskPlanTaskResponse struct {
+	ID                   string   `json:"id"`
+	PhaseID              string   `json:"phaseId,omitempty"`
+	Title                string   `json:"title"`
+	Prompt               string   `json:"prompt"`
+	DependsOn            []string `json:"dependsOn"`
+	VerificationCommands []string `json:"verificationCommands"`
+	WorkspaceKey         string   `json:"workspaceKey"`
+	Harness              string   `json:"harness,omitempty"`
+}
+
+// TaskPlanResponse is the full validated graph. Runtime attempt and result
+// evidence is intentionally absent until its remote-safe projection exists.
+type TaskPlanResponse struct {
+	ID        string                  `json:"id"`
+	ProjectID string                  `json:"projectId"`
+	Title     string                  `json:"title"`
+	Phases    []TaskPlanPhaseResponse `json:"phases"`
+	Tasks     []TaskPlanTaskResponse  `json:"tasks"`
+}
+
+// TaskPlanSummaryResponse is bounded plan metadata returned by create/list.
+type TaskPlanSummaryResponse struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"projectId"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TaskPlanEnvelope wraps one full task graph.
+type TaskPlanEnvelope struct {
+	TaskPlan TaskPlanResponse `json:"taskPlan"`
+}
+
+// CreateTaskPlanProposalInput requests a durable planner draft.
+type CreateTaskPlanProposalInput struct {
+	RequestKey    string `json:"requestKey" maxLength:"128"`
+	Specification string `json:"specification" maxLength:"32768"`
+}
+
+// TaskPlanProposalResponse is the reviewable state of one planner draft.
+type TaskPlanProposalResponse struct {
+	ID           string            `json:"id"`
+	ProjectID    domain.ProjectID  `json:"projectId"`
+	Status       string            `json:"status" enum:"queued,generating,ready,invalid,failed,accepted,rejected"`
+	TaskPlan     *TaskPlanResponse `json:"taskPlan,omitempty"`
+	TaskPlanID   string            `json:"taskPlanId,omitempty"`
+	ErrorCode    string            `json:"errorCode,omitempty"`
+	ErrorMessage string            `json:"errorMessage,omitempty"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	UpdatedAt    time.Time         `json:"updatedAt"`
+}
+
+// TaskPlanProposalEnvelope wraps one planner draft.
+type TaskPlanProposalEnvelope struct {
+	Proposal TaskPlanProposalResponse `json:"proposal"`
+}
+
+// ListTaskPlanProposalsResponse is a bounded newest-first page of drafts.
+type ListTaskPlanProposalsResponse struct {
+	Proposals []TaskPlanProposalResponse `json:"proposals"`
+}
+
+// ListTaskPlanProposalsQuery selects a bounded proposal list page.
+type ListTaskPlanProposalsQuery struct {
+	Limit *int `query:"limit,omitempty" description:"Maximum number of proposals to return (1-100)." minimum:"1" maximum:"100"`
+}
+
+// TaskPlanProposalIDParam is the {proposalId} path parameter.
+type TaskPlanProposalIDParam struct {
+	ProposalID string `path:"proposalId" description:"Opaque planner proposal identifier."`
+}
+
+// TaskGateIDParam is the {gateId} path parameter.
+type TaskGateIDParam struct {
+	GateID string `path:"gateId" description:"Opaque human-gate identifier."`
+}
+
+// TaskRetryPolicyResponse is the project retry and fallback configuration.
+type TaskRetryPolicyResponse struct {
+	MaxAttempts     int    `json:"maxAttempts" minimum:"1" maximum:"8"`
+	FallbackHarness string `json:"fallbackHarness,omitempty"`
+}
+
+// TaskRetryPolicyEnvelope wraps the project retry policy.
+type TaskRetryPolicyEnvelope struct {
+	Policy TaskRetryPolicyResponse `json:"policy"`
+}
+
+// TaskRetryDecisionResponse is the idempotent policy choice for one attempt.
+type TaskRetryDecisionResponse struct {
+	ID        string `json:"id"`
+	AttemptID string `json:"attemptId"`
+	Action    string `json:"action" enum:"none,retry,fallback,escalate,hold"`
+	Harness   string `json:"harness,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	GateID    string `json:"gateId,omitempty"`
+}
+
+// TaskRetryDecisionEnvelope wraps one retry decision.
+type TaskRetryDecisionEnvelope struct {
+	Decision TaskRetryDecisionResponse `json:"decision"`
+}
+
+// TaskHandoffResponse is a bounded summary linked to one task.
+type TaskHandoffResponse struct {
+	ID        string    `json:"id"`
+	TaskID    string    `json:"taskId"`
+	AttemptID string    `json:"attemptId"`
+	Summary   string    `json:"summary"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// TaskHandoffEnvelope wraps one handoff summary.
+type TaskHandoffEnvelope struct {
+	Handoff TaskHandoffResponse `json:"handoff"`
+}
+
+// ListTaskHandoffsResponse lists handoff summaries for one task.
+type ListTaskHandoffsResponse struct {
+	Handoffs []TaskHandoffResponse `json:"handoffs"`
+}
+
+// TaskHumanGateResponse is a restart-safe approval request.
+type TaskHumanGateResponse struct {
+	ID         string     `json:"id"`
+	PlanID     string     `json:"planId"`
+	TaskID     string     `json:"taskId"`
+	AttemptID  string     `json:"attemptId,omitempty"`
+	RequestKey string     `json:"requestKey"`
+	Status     string     `json:"status" enum:"pending,approved,rejected"`
+	Summary    string     `json:"summary"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
+	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+}
+
+// TaskHumanGateEnvelope wraps one human gate.
+type TaskHumanGateEnvelope struct {
+	Gate TaskHumanGateResponse `json:"gate"`
+}
+
+// ListTaskHumanGatesResponse lists the gates for one plan.
+type ListTaskHumanGatesResponse struct {
+	Gates []TaskHumanGateResponse `json:"gates"`
+}
+
+// TaskPlanSummaryEnvelope wraps one task-plan summary.
+type TaskPlanSummaryEnvelope struct {
+	TaskPlan TaskPlanSummaryResponse `json:"taskPlan"`
+}
+
+// ListTaskPlansResponse is one cursor-paginated plan-summary page.
+type ListTaskPlansResponse struct {
+	TaskPlans  []TaskPlanSummaryResponse `json:"taskPlans"`
+	NextCursor string                    `json:"nextCursor,omitempty"`
+}
+
+// TaskScheduleResponse is the remote-safe ready queue. It omits prompts,
+// verification commands, command output, and host paths.
+type TaskScheduleResponse struct {
+	Recovery     string                `json:"recovery"`
+	ReadyTaskIDs []string              `json:"readyTaskIds"`
+	Tasks        []TaskScheduleTask    `json:"tasks"`
+	Attempts     []TaskScheduleAttempt `json:"attempts"`
+}
+
+// TaskScheduleTask is one task's durable state and derived readiness.
+type TaskScheduleTask struct {
+	ID           string `json:"id"`
+	State        string `json:"state"`
+	WorkspaceKey string `json:"workspaceKey"`
+	Harness      string `json:"harness,omitempty"`
+	Ready        bool   `json:"ready"`
+}
+
+// TaskScheduleAttempt is one durable dispatch identity.
+type TaskScheduleAttempt struct {
+	ID            string `json:"id"`
+	TaskID        string `json:"taskId"`
+	AttemptNumber int    `json:"attemptNumber"`
+	State         string `json:"state"`
+	RuntimeRef    string `json:"runtimeRef,omitempty"`
+	SessionID     string `json:"sessionId,omitempty"`
+}
+
+// TaskDispatchResponse reports attempts claimed or reconciled by one dispatch.
+type TaskDispatchResponse struct {
+	Recovery string                `json:"recovery"`
+	Claims   []TaskScheduleAttempt `json:"claims"`
+}
+
+// TaskCandidateResponse is the durable outcome of an explicit result.
+type TaskCandidateResponse struct {
+	AttemptID string `json:"attemptId"`
+	TaskID    string `json:"taskId"`
+	Outcome   string `json:"outcome"`
+	TaskState string `json:"taskState"`
+}
+
 // AgentIDParam is the {agent} path parameter for one-agent catalog probes.
 type AgentIDParam struct {
 	Agent string `path:"agent" description:"Agent adapter identifier."`

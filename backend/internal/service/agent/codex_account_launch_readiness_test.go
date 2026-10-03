@@ -35,7 +35,7 @@ type codexReadCall struct {
 
 func newCodexLaunchReadinessFixture(t *testing.T) *codexLaunchReadinessFixture {
 	t.Helper()
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	globalHome := filepath.Join(root, "global-codex")
 	if err := ensurePrivateDirectory(globalHome); err != nil {
 		t.Fatal(err)

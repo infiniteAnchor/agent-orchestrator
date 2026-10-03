@@ -58,6 +58,9 @@ import (
 	settingssvc "github.com/aoagents/agent-orchestrator/backend/internal/service/settings"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systemcheck"
 	"github.com/aoagents/agent-orchestrator/backend/internal/service/systeminstall"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/taskauto"
+	taskplansvc "github.com/aoagents/agent-orchestrator/backend/internal/service/taskplan"
+	"github.com/aoagents/agent-orchestrator/backend/internal/service/tasksched"
 	usagesvc "github.com/aoagents/agent-orchestrator/backend/internal/service/usage"
 	"github.com/aoagents/agent-orchestrator/backend/internal/skillassets"
 	"github.com/aoagents/agent-orchestrator/backend/internal/storage/sqlite"
@@ -517,6 +520,10 @@ func Run() error {
 	lcStack.LCM.SetSessionOperationGate(sessMgr)
 	termMgr.SetSessionInputLease(sessMgr)
 	projectSvc := projectsvc.NewWithDeps(projectsvc.Deps{Store: store, Sessions: sessionSvc, DefaultHarness: domain.AgentHarness(cfg.Agent), Telemetry: telemetrySink, Logger: log})
+	taskPlanSvc := taskplansvc.New(store)
+	taskProposalSvc := taskplansvc.NewProposalService(store, sessionSvc, chatSvc)
+	taskScheduler := tasksched.New(store, tasksched.NewSessionLauncher(store, sessionSvc, sessionSvc), tasksched.ExecVerifier{})
+	taskAutoSvc := taskauto.New(store, taskauto.NewChatReviewer(sessionSvc, chatSvc))
 	if err := seedScratchProjectOnBoot(ctx, cfg, projectSvc); err != nil {
 		stop()
 		lcStack.Stop()
@@ -746,6 +753,11 @@ func Run() error {
 
 	srv, err := httpd.NewWithDeps(cfg, log, termMgr, httpd.APIDeps{
 		Projects:           projectSvc,
+		TaskPlans:          taskPlanSvc,
+		TaskProposals:      taskProposalSvc,
+		TaskAutomation:     taskAutoSvc,
+		TaskSchedule:       taskScheduler,
+		TaskRecovery:       taskScheduler,
 		HostID:             hostIdentity.HostID,
 		Endpoints:          bs,
 		Agents:             agentSvc,
@@ -857,6 +869,23 @@ func Run() error {
 		startupReconcileDone = done
 		go func() {
 			defer close(done)
+			go func() {
+				// Reviewer turns start only after task recovery. A failed
+				// recovery leaves the scheduler unready, so this wait ends
+				// when the process shuts down instead of replaying results.
+				ticker := time.NewTicker(200 * time.Millisecond)
+				defer ticker.Stop()
+				for !taskScheduler.Ready() {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+				if err := taskAutoSvc.Run(ctx); err != nil && ctx.Err() == nil {
+					log.Error("task automation stopped", "err", err)
+				}
+			}()
 			if reconcileErr := reconcilePersistentChatHosts(ctx, cfg.DataDir, store); reconcileErr != nil {
 				log.Error("persistent chat host reconciliation on boot failed", "err", reconcileErr)
 			}
@@ -865,6 +894,16 @@ func Run() error {
 			}
 			if reconcileErr := lcStack.ReconcileRuntime(ctx); reconcileErr != nil {
 				log.Error("background agent-process reconciliation on boot failed", "err", reconcileErr)
+			}
+			go func() {
+				// Reconcile sessions first: task adoption must observe their
+				// recovered controllers. Run never claims fresh tasks.
+				if err := taskScheduler.Run(ctx); err != nil && ctx.Err() == nil {
+					log.Error("task schedule recovery failed; dispatch stays closed", "err", err)
+				}
+			}()
+			if reconcileErr := taskProposalSvc.Recover(ctx); reconcileErr != nil {
+				log.Error("task plan proposal recovery failed", "err", reconcileErr)
 			}
 		}()
 	})

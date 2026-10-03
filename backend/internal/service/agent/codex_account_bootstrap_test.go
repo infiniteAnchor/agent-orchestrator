@@ -30,7 +30,7 @@ func TestCodexBootstrapRecoversAfterTransientFailure(t *testing.T) {
 		"executable permission repaired": &os.PathError{Op: "fork/exec", Path: "/private/codex", Err: os.ErrPermission},
 	} {
 		t.Run(name, func(t *testing.T) {
-			root := t.TempDir()
+			root := privateCodexTempDir(t)
 			attempts := 0
 			factory := &fakeCodexAccountFactory{open: func(ports.CodexAccountContext) (ports.CodexAccountClient, error) {
 				attempts++
@@ -58,7 +58,7 @@ func TestCodexBootstrapRecoversAfterTransientFailure(t *testing.T) {
 }
 
 func TestCodexBootstrapCooldownAndSafeFailure(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	factory := &fakeCodexAccountFactory{open: func(ports.CodexAccountContext) (ports.CodexAccountClient, error) {
 		return nil, errors.New("secret credential /private/path")
 	}}
@@ -148,9 +148,9 @@ func TestBootstrapStorageFailureClassifiesPreservedIOCause(t *testing.T) {
 }
 
 func TestCodexBootstrapPermanentSafetyFailure(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	pending := filepath.Join(root, "pending")
-	if err := os.Symlink(t.TempDir(), pending); err != nil {
+	if err := os.Symlink(privateCodexTempDir(t), pending); err != nil {
 		t.Fatal(err)
 	}
 	factory := &fakeCodexAccountFactory{}
@@ -178,7 +178,7 @@ func TestCodexBootstrapPermanentSafetyFailure(t *testing.T) {
 }
 
 func TestCodexBootstrapConcurrentWaitersAndCancellation(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	started, release := make(chan struct{}, 1), make(chan struct{})
 	factory := &fakeCodexAccountFactory{open: func(ports.CodexAccountContext) (ports.CodexAccountClient, error) {
 		return &fakeCodexAccountClient{readStarted: started, readRelease: release, read: ports.CodexAccountObservation{Authentication: domain.AgentAuthenticationUnauthorized}}, nil
@@ -239,7 +239,7 @@ func (s *bootstrapFailingStateStore) GetCodexActiveAccount(ctx context.Context) 
 }
 
 func TestCodexBootstrapRetriesStateReadFailure(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	state := &bootstrapFailingStateStore{}
 	factory := &fakeCodexAccountFactory{open: func(ports.CodexAccountContext) (ports.CodexAccountClient, error) {
 		return &fakeCodexAccountClient{read: ports.CodexAccountObservation{Authentication: domain.AgentAuthenticationUnauthorized}}, nil
@@ -262,7 +262,7 @@ func TestCodexBootstrapRetriesStateReadFailure(t *testing.T) {
 }
 
 func TestCodexBootstrapRetriesInconclusiveRead(t *testing.T) {
-	root := t.TempDir()
+	root := privateCodexTempDir(t)
 	attempts := 0
 	factory := &fakeCodexAccountFactory{open: func(ports.CodexAccountContext) (ports.CodexAccountClient, error) {
 		attempts++

@@ -914,7 +914,7 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (domain.Sess
 	promptBytes := len(prompt)
 	systemPromptBytes := len(systemPrompt)
 
-	rec, err := m.store.CreateSession(ctx, seedRecord(cfg, project.Config, m.clock()))
+	rec, err := m.createSpawnSession(ctx, cfg, seedRecord(cfg, project.Config, m.clock()))
 	if err != nil {
 		return domain.SessionRecord{}, 0, 0, wrapSpawnStageEarly(ErrSpawnCreate, err)
 	}
@@ -2531,6 +2531,9 @@ func (m *Manager) saveAndTeardownOne(ctx context.Context, rec domain.SessionReco
 // conversation identity. A restart-time dependency failure is not user intent
 // to terminate the session; the controller can be retried through Resume Agent.
 func (m *Manager) reconcileLive(ctx context.Context, rec domain.SessionRecord) error {
+	if handled, err := m.reconcileTaskWorker(ctx, rec); handled {
+		return err
+	}
 	project, err := m.loadProject(ctx, rec.ProjectID)
 	if err != nil {
 		return err
@@ -2855,6 +2858,12 @@ func (m *Manager) RestoreAll(ctx context.Context) error {
 	}
 	for _, rec := range recs {
 		if !rec.IsTerminated {
+			continue
+		}
+		if handled, err := m.reconcileTaskWorker(ctx, rec); handled {
+			if err != nil {
+				m.logger.Warn("restore-all: task worker held", "sessionID", rec.ID, "error", err)
+			}
 			continue
 		}
 		// Check the shutdown-saved marker: is there a session_worktrees row?
