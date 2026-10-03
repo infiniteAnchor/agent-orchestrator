@@ -112,3 +112,30 @@ passed typecheck, all 21 tests, and pack dry-run. The earlier full frontend,
 renderer smoke, and product UI results remain applicable because those sources
 and dependencies are unchanged by this test-only follow-up. Native macOS/Windows
 checks require CI runners; no release or publishing step was used for validation.
+
+## Detached task-worker recovery follow-up (2026-10-02)
+
+Session recovery already precedes scheduler recovery on boot. Task-owned Chat
+sessions now use an attach-only Codex recovery policy through the existing Chat
+controller and persistent-host path. This requires durable provider/generation
+ownership and an existing workspace; it never restores a workspace, starts a
+replacement provider, sends the saved prompt, or dispatches another task.
+Missing, unreadable, dead, or uncertain hosts leave the attempt held. Terminated
+workers and other Chat drivers retain the conservative hold behavior.
+
+Regression coverage uses fake providers and disposable SQLite stores: same-host
+attachment with detached event replay, the durable running-turn busy gate,
+exclusive ownership refusal without direct-process fallback, and a crash after
+session binding but before launch completion. Repeated scheduler recovery keeps
+one attempt/session and leaves dependent tasks undispatched. No paid provider
+work or migration of existing user data was used for this follow-up. The native
+crash acceptance above is historical evidence of the hold path; a new native
+surviving-host acceptance run is still outstanding.
+
+Validation for this follow-up used Go 1.26.6 (the workspace requires 1.26.5 or
+newer): build, vet, the complete `go test -race -timeout=15m ./...`, final focused
+reconnect race regressions, golangci-lint v2.12.2 (zero issues), and Linux CLI
+E2E passed. API regeneration under Node 24.21.0 produced no spec/type drift,
+and the Docker fresh-install smoke check passed.
+Independent review found no production defects. CI currently produces no runs;
+native macOS/Windows and paid-provider crash acceptance remain unverified.

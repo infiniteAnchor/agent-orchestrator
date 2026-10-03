@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -92,7 +93,8 @@ func TestHostReconnectsSameProviderAndReplaysDetachedOutput(t *testing.T) {
 	var second *Transport
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		second, err = attach(context.Background(), d, true)
+		cfg.ReconnectOnly = true
+		second, err = ConnectOrStart(context.Background(), cfg)
 		if err == nil {
 			break
 		}
@@ -627,4 +629,45 @@ func requestProviderPID(t *testing.T, transport *Transport, id int64, method str
 		t.Fatalf("provider response = id:%d pid:%s", response.ID, strconv.Itoa(response.Result.PID))
 	}
 	return response.Result.PID
+}
+
+func TestReconnectOnlyMissingUnreadableOrDeadHostDoesNotLaunch(t *testing.T) {
+	for _, evidence := range []string{"missing", "corrupt", "dead"} {
+		t.Run(evidence, func(t *testing.T) {
+			cfg := Config{SessionID: "held", DataDir: t.TempDir(), Workdir: t.TempDir(), ReconnectOnly: true,
+				Env: append(os.Environ(), "AO_CHAT_HOST_PROVIDER_HELPER=1"), Argv: []string{os.Args[0], "-test.run=TestProviderHelper"}}
+			path, err := descriptorPath(cfg.DataDir, cfg.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if evidence == "corrupt" {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("invalid"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if evidence == "dead" {
+				if err := writeDescriptor(cfg.DataDir, Descriptor{Version: ProtocolVersion, SessionID: cfg.SessionID, Address: "127.0.0.1:1", Token: "disposable", PID: 2147483647, StartedAt: time.Now()}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, _ := os.ReadFile(path)
+			transport, err := ConnectOrStart(context.Background(), cfg)
+			if transport != nil || !errors.Is(err, ErrOwnershipInconclusive) {
+				t.Fatalf("reconnect=%v err=%v", transport, err)
+			}
+			if evidence == "missing" {
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("host descriptor created: %v", err)
+				}
+			} else {
+				b, err := os.ReadFile(path)
+				if err != nil || string(b) != string(before) {
+					t.Fatalf("ownership record modified: %v", err)
+				}
+			}
+		})
+	}
 }

@@ -171,6 +171,8 @@ type StartConfig struct {
 	// provider boundary does not exist until ControllerReady commits; AO already
 	// retains the unified timeline and the finalized continuation separately.
 	SkipNativeHistoryImport bool
+	// ReconnectOnly requires a surviving detached provider; never launch a replacement.
+	ReconnectOnly bool
 	// ControllerReady commits the controller's durable generation before event
 	// consumption starts. A controller that exits immediately must report after
 	// the launch has been marked live, so its exited signal cannot be overwritten
@@ -267,6 +269,9 @@ func (s *Service) settleOrphanedWork(ctx context.Context, session domain.Session
 // conversation: presenting unrelated history as continuous is worse than an error
 // the user can act on.
 func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, error) {
+	if cfg.ReconnectOnly && (cfg.Harness != domain.HarnessCodex || cfg.ProviderConversationID == "") {
+		return nil, fmt.Errorf("%w: live reconnect requires a stored Codex conversation", ports.ErrChatRecoveryInconclusive)
+	}
 	gate := s.controllerGate(cfg.SessionID)
 	if err := gate.lock(ctx); err != nil {
 		return nil, err
@@ -449,6 +454,7 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	var conv ports.ChatConversation
 	if cfg.ProviderConversationID != "" {
 		conv, err = driver.Resume(ctx, ports.ChatResumeConfig{
+			ReconnectOnly:          cfg.ReconnectOnly,
 			SessionID:              cfg.SessionID,
 			ProviderConversationID: cfg.ProviderConversationID,
 			DataDir:                cfg.DataDir,
@@ -491,6 +497,10 @@ func (s *Service) Start(ctx context.Context, cfg StartConfig) (*Controller, erro
 	liveReconnect := false
 	if reconnected, ok := conv.(ports.ChatLiveReconnector); ok {
 		liveReconnect = reconnected.ReconnectedLive()
+	}
+	if cfg.ReconnectOnly && !liveReconnect {
+		cleanupUnpublishedConversation(conv, false)
+		return nil, fmt.Errorf("%w: provider did not reconnect live", ports.ErrChatRecoveryInconclusive)
 	}
 	var liveRows ConversationRows
 	if liveReconnect {
@@ -1196,6 +1206,8 @@ type StartRequest struct {
 	ControllerGeneration    string
 	RequireNativeHistory    bool
 	SkipNativeHistoryImport bool
+	// ReconnectOnly requires a surviving detached provider; never launch a replacement.
+	ReconnectOnly bool
 	// ControllerReady runs after the provider and generation exist but before
 	// live event projection starts.
 	ControllerReady func(StartResult) (ControllerCommit, error)

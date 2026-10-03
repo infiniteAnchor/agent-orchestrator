@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -272,14 +273,17 @@ func TestResumeReconnectsInitializedHostWithoutNativeResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.persistent = true
-	d.connectHost = func(context.Context, persistenthost.Config) (*persistenthost.Transport, error) {
+	d.connectHost = func(_ context.Context, cfg persistenthost.Config) (*persistenthost.Transport, error) {
+		if !cfg.ReconnectOnly {
+			t.Fatal("recovery allowed host creation")
+		}
 		return &persistenthost.Transport{
 			Stdin: proc.stdin, Stdout: proc.stdout, Reconnected: true, NextRequestID: 41,
 		}, nil
 	}
 
 	conv, err := d.Resume(context.Background(), ports.ChatResumeConfig{
-		SessionID: "ao-reconnect", ProviderConversationID: "thread-survived",
+		ReconnectOnly: true, SessionID: "ao-reconnect", ProviderConversationID: "thread-survived",
 		DataDir: t.TempDir(), WorkspacePath: "/tmp/ws",
 	})
 	if err != nil {
@@ -1478,5 +1482,29 @@ func TestEnvSliceWithNoOverlayStillInheritsTheEnvironment(t *testing.T) {
 	}
 	if !sawHome {
 		t.Error("an empty overlay produced an environment with no HOME")
+	}
+}
+
+func TestReconnectOnlyNeverFallsBackToDirectProvider(t *testing.T) {
+	for _, persistent := range []bool{true, false} {
+		t.Run(fmt.Sprintf("persistent=%v", persistent), func(t *testing.T) {
+			d, srv := newTestDriver(t)
+			d.persistent = persistent
+			d.connectHost = func(_ context.Context, cfg persistenthost.Config) (*persistenthost.Transport, error) {
+				if !cfg.ReconnectOnly {
+					t.Fatal("host launch allowed")
+				}
+				return nil, persistenthost.ErrAttached
+			}
+			conv, err := d.Resume(context.Background(), ports.ChatResumeConfig{
+				SessionID: "held", ProviderConversationID: "existing", DataDir: t.TempDir(), WorkspacePath: t.TempDir(), ReconnectOnly: true, AllowConcurrentHostReplacement: true,
+			})
+			if conv != nil || !errors.Is(err, ports.ErrChatRecoveryInconclusive) {
+				t.Fatalf("conv=%v err=%v", conv, err)
+			}
+			if srv.sentMethod("initialize") || srv.sentMethod("thread/start") || srv.sentMethod("thread/resume") || srv.sentMethod("turn/start") {
+				t.Fatal("recovery started provider work")
+			}
+		})
 	}
 }
