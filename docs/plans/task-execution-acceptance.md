@@ -139,3 +139,20 @@ E2E passed. API regeneration under Node 24.21.0 produced no spec/type drift,
 and the Docker fresh-install smoke check passed.
 Independent review found no production defects. CI currently produces no runs;
 native macOS/Windows and paid-provider crash acceptance remain unverified.
+
+### Open issue: browser capability rotation on live reconnect (2026-10-02)
+
+Found in review of the detached recovery change; not yet reproduced natively.
+Every Chat controller resume calls `prepareChatControllerEnv`, which issues a
+new browser capability token and persists its verifier before the driver
+connects. When the driver instead attaches to a surviving detached host
+(`ReconnectedLive`), that host keeps the environment it was started with, so
+its worker still presents the previous token while the store now holds only the
+new verifier. Browser commands from a reconnected worker are therefore expected
+to be rejected until the provider is restarted.
+
+This predates the task-worker change (ordinary Chat live reconnects take the
+same path), but attach-only recovery now routes recovered task workers through
+it. Candidate fixes: skip rotation when the conversation reconnects live and keep
+the existing verifier, or deliver the rotated token to the running host. Add a
+regression asserting that a reconnected worker's original token still verifies.

@@ -242,7 +242,10 @@ surface (`npm run sqlc`, `npm run api`).
   now attaches only to a surviving host, preserving attempt/session identity;
   missing or uncertain hosts still hold work. Fake-provider and disposable-store
   regressions cover reconnect without prompt replay or dispatch; native crash
-  acceptance remains to be repeated. See the
+  acceptance remains to be repeated. Open issue: live reconnect rotates the
+  browser capability verifier while the surviving host keeps its old token, so
+  reconnected workers' browser commands are expected to fail (see the
+  acceptance record). See the
   [native acceptance record](plans/task-execution-acceptance.md),
   [execution plan](plans/phase-3-durable-task-graph.md) and
   [contract index](plans/phase-3-contract-index.md).
